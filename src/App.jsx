@@ -5,7 +5,14 @@ import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken }
 import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
 
 // --- Firebase 設定 ---
-const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+const firebaseConfig = {
+  apiKey: "AIzaSyCTDD_TMng6EclbLiMoc7-36QRowhQrvew",
+  authDomain: "kaiteki-gym.firebaseapp.com",
+  projectId: "kaiteki-gym",
+  storageBucket: "kaiteki-gym.firebasestorage.app",
+  messagingSenderId: "88315814584",
+  appId: "1:88315814584:web:14eb104398bb05cf0bca4d"
+};
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
