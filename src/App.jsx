@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound } from 'lucide-react';
+import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, query } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, query, writeBatch } from 'firebase/firestore';
 
 // --- Firebase 設定 ---
 const firebaseConfig = {
@@ -22,9 +22,7 @@ const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'kaiteki-gym-produ
 const safeAppId = String(rawAppId).replace(/\//g, '-');
 
 // --- セキュリティ用パスワード設定 ---
-// 1. サイト全体の入り口パスワード（利用者に共有するもの）
 const PORTAL_PASSWORD = "kaiteki-user";
-// 2. 管理者専用パスワード（承認担当者のみ）
 const ADMIN_PASSWORD = "admin123";
 
 // 備品リスト
@@ -64,9 +62,8 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState(null);
   const [preSelectedDate, setPreSelectedDate] = useState('');
   
-  // 認証状態の管理
-  const [isPortalAuthorized, setIsPortalAuthorized] = useState(false); // 入口認証
-  const [isAdmin, setIsAdmin] = useState(false); // 管理者認証
+  const [isPortalAuthorized, setIsPortalAuthorized] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [passInput, setPassInput] = useState('');
   
@@ -123,7 +120,6 @@ export default function App() {
     }
   };
 
-  // 入口パスワードの処理
   const handlePortalLogin = (e) => {
     e.preventDefault();
     const input = e.target.portalPass.value;
@@ -134,7 +130,6 @@ export default function App() {
     }
   };
 
-  // ログイン前の画面
   if (!isPortalAuthorized) {
     return (
       <div className="min-h-screen bg-blue-900 flex items-center justify-center p-4">
@@ -174,7 +169,6 @@ export default function App() {
     );
   }
 
-  // ログイン後のメイン画面
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
       <style>{`
@@ -227,7 +221,7 @@ export default function App() {
           <div className="w-full space-y-8">
             {activeTab === 'calendar' && <CalendarView reservations={reservations} onReserveClick={(d) => {setPreSelectedDate(d); setActiveTab('reserve');}} />}
             {activeTab === 'reserve' && <ReservationForm initialDate={preSelectedDate} reservations={reservations} user={user} onSuccess={() => {showToast('申し込みを送信しました。承認をお待ちください。'); setActiveTab('calendar');}} />}
-            {activeTab === 'cancel' && <CancelView reservations={reservations} onSuccess={() => showToast('予約をキャンセルしました')} />}
+            {activeTab === 'cancel' && <CancelView reservations={reservations} onSuccess={() => { showToast('予約をキャンセルしました'); setActiveTab('calendar'); }} />}
             {activeTab === 'rules' && <RulesView />}
             {activeTab === 'admin' && isAdmin && <AdminDashboard reservations={reservations} onStatusUpdate={() => showToast('更新しました')} />}
           </div>
@@ -372,16 +366,20 @@ function ReservationForm({ initialDate, reservations, user, onSuccess }) {
   const [equipment, setEquipment] = useState([]);
   const [members, setMembers] = useState([{ name: '', address: '' }]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // 定期予約用ステート
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurringEndDate, setRecurringEndDate] = useState('');
 
-  const getOccupiedCourts = () => {
-    if (!selectedDate || !formData.startTime || !formData.endTime || formData.place !== '体育館') return [];
+  const getOccupiedCourts = (date) => {
+    if (!date || !formData.startTime || !formData.endTime || formData.place !== '体育館') return [];
     return reservations
-      .filter(r => r.date === selectedDate && r.place === '体育館' && r.courts)
+      .filter(r => r.date === date && r.place === '体育館' && r.courts)
       .filter(r => isTimeOverlapping(formData.startTime, formData.endTime, r.startTime, r.endTime))
       .flatMap(r => Array.isArray(r.courts) ? r.courts : []);
   };
 
-  const occupiedCourts = getOccupiedCourts();
+  const occupiedCourts = getOccupiedCourts(selectedDate);
 
   const toggleCourt = (court) => {
     if (occupiedCourts.includes(court)) return;
@@ -407,15 +405,77 @@ function ReservationForm({ initialDate, reservations, user, onSuccess }) {
     if (!user) return alert("認証エラーです");
     if (formData.place === '体育館' && selectedCourts.length === 0) return alert("コート(A-F)を選んでください。");
     
+    // 定期予約の日付リスト生成
+    let targetDates = [selectedDate];
+    if (isRecurring && recurringEndDate) {
+      if (new Date(recurringEndDate) <= new Date(selectedDate)) {
+        return alert("終了日は開始日より後の日付を指定してください。");
+      }
+      
+      let current = new Date(selectedDate);
+      const end = new Date(recurringEndDate);
+      // 1週間（7日）ずつ進める
+      while (true) {
+        current.setDate(current.getDate() + 7);
+        if (current > end) break;
+        targetDates.push(formatDateStr(current));
+      }
+    }
+
+    if (targetDates.length > 20) {
+      return alert("定期予約は最大20回分までまとめて申請可能です。期間を短くしてください。");
+    }
+
+    // 全日程の重複チェック
+    for (const d of targetDates) {
+      if (formData.place === '体育館') {
+        const occ = getOccupiedCourts(d);
+        const conflict = selectedCourts.some(c => occ.includes(c));
+        if (conflict) {
+          return alert(`${d} に指定のコートが既に予約されています。別の日時を選択するか、単発で予約してください。`);
+        }
+      } else {
+        // 多目的室の重複チェック
+        const roomConflict = reservations.some(r => 
+          r.date === d && r.place === '多目的室' && r.status === 'approved' &&
+          isTimeOverlapping(formData.startTime, formData.endTime, r.startTime, r.endTime)
+        );
+        if (roomConflict) {
+          return alert(`${d} の多目的室は既に予約されています。`);
+        }
+      }
+    }
+    
     setIsSubmitting(true);
     try {
-      await addDoc(collection(db, 'artifacts', safeAppId, 'public', 'data', 'reservations'), {
-        date: selectedDate, userType, ...formData, 
-        courts: formData.place === '体育館' ? selectedCourts : null,
-        equipment, members, status: 'pending', createdAt: new Date().toISOString(), userId: user.uid
+      // 複数件ある場合は一括保存
+      const batch = writeBatch(db);
+      const resCollection = collection(db, 'artifacts', safeAppId, 'public', 'data', 'reservations');
+      
+      targetDates.forEach(d => {
+        const newDocRef = doc(resCollection);
+        batch.set(newDocRef, {
+          date: d, 
+          userType, 
+          ...formData, 
+          courts: formData.place === '体育館' ? selectedCourts : null,
+          equipment, 
+          members, 
+          status: 'pending', 
+          createdAt: new Date().toISOString(), 
+          userId: user.uid,
+          isRecurring: targetDates.length > 1
+        });
       });
+
+      await batch.commit();
       onSuccess();
-    } catch (err) { alert("保存に失敗しました。"); } finally { setIsSubmitting(false); }
+    } catch (err) { 
+      console.error(err);
+      alert("保存に失敗しました。"); 
+    } finally { 
+      setIsSubmitting(false); 
+    }
   };
 
   return (
@@ -448,9 +508,35 @@ function ReservationForm({ initialDate, reservations, user, onSuccess }) {
           <h3 className="font-bold border-b-2 border-blue-50 pb-3 flex items-center text-blue-900 text-lg tracking-tight"><MapPin className="h-6 w-6 mr-3 text-blue-500"/> ② 日時と場所</h3>
           <div className="space-y-5">
             <div className="space-y-2 px-2">
-              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">利用日 *</label>
+              <div className="flex justify-between items-center px-1">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">利用日 *</label>
+                <button 
+                  type="button" 
+                  onClick={() => setIsRecurring(!isRecurring)} 
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black transition-all ${isRecurring ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}
+                >
+                  <RefreshCw className={`w-3 h-3 ${isRecurring ? 'animate-spin-slow' : ''}`} />
+                  定期予約{isRecurring ? 'ON' : 'OFF'}
+                </button>
+              </div>
               <input type="date" required value={selectedDate} onChange={(e)=>setSelectedDate(e.target.value)} className="border-2 border-gray-100 p-4 rounded-2xl w-full font-bold text-lg text-blue-900 outline-none focus:border-blue-500" />
             </div>
+
+            {isRecurring && (
+              <div className="space-y-2 px-2 animate-in slide-in-from-top-2">
+                <label className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest px-1 flex items-center gap-2">
+                  <RefreshCw className="w-3 h-3" /> 定期予約の終了日 *
+                </label>
+                <input 
+                  type="date" 
+                  required 
+                  value={recurringEndDate} 
+                  onChange={(e)=>setRecurringEndDate(e.target.value)} 
+                  className="border-2 border-indigo-100 p-4 rounded-2xl w-full font-bold text-lg text-indigo-900 outline-none focus:border-indigo-500 bg-indigo-50/30" 
+                />
+                <p className="text-[10px] text-indigo-400 font-bold px-2 italic">※毎週同じ曜日に予約を作成します（最大20週分まで）</p>
+              </div>
+            )}
             
             <div className="grid grid-cols-2 gap-4 px-2">
               <div className="space-y-2">
@@ -567,7 +653,7 @@ function ReservationForm({ initialDate, reservations, user, onSuccess }) {
 
       <div className="flex flex-col items-center pt-10 space-y-6">
         <button type="submit" disabled={isSubmitting} className="w-full max-w-lg bg-blue-600 text-white py-5 rounded-[2rem] font-bold text-xl hover:bg-blue-700 transition-all shadow-xl active:scale-95 disabled:bg-gray-400 flex items-center justify-center">
-          {isSubmitting ? <><Loader2 className="animate-spin mr-3"/> 送信中...</> : '申し込みを送信する'}
+          {isSubmitting ? <><Loader2 className="animate-spin mr-3"/> 送信中...</> : isRecurring ? `定期予約を一括申請する` : '申し込みを送信する'}
         </button>
       </div>
     </form>
@@ -600,7 +686,92 @@ function CourtButton({ label, active, occupied, onClick }) {
   );
 }
 
-// 3. 管理者ダッシュボード
+// 3. 予約取消画面
+function CancelView({ reservations, onSuccess }) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filteredResults, setFilteredResults] = useState([]);
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    if (!searchTerm.trim()) return;
+    const results = reservations.filter(res => 
+      (res.phone && res.phone.includes(searchTerm)) || 
+      (res.repName && res.repName.includes(searchTerm)) || 
+      (res.name && res.name.includes(searchTerm))
+    );
+    setFilteredResults(results);
+  };
+
+  const handleCancel = async (id) => {
+    if (window.confirm('この予約を取り消しますか？取り消すと元に戻せません。')) {
+      try {
+        await deleteDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', id));
+        onSuccess();
+      } catch (err) {
+        alert("削除に失敗しました。");
+      }
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-8 animate-in fade-in duration-500">
+      <div className="text-center space-y-2">
+        <h2 className="text-3xl font-black text-gray-900 tracking-tight flex items-center justify-center">
+          <XCircle className="mr-3 h-8 w-8 text-red-500" /> 予約の取り消し
+        </h2>
+        <p className="text-sm text-gray-500 font-bold">電話番号または氏名で予約を検索してください</p>
+      </div>
+
+      <div className="bg-white p-8 rounded-[2.5rem] border shadow-xl">
+        <form onSubmit={handleSearch} className="relative group mb-8">
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="電話番号または責任者名を入力"
+            className="w-full pl-6 pr-14 py-4 bg-gray-50 border-4 border-transparent focus:border-red-400 focus:bg-white rounded-[2rem] text-lg font-bold outline-none transition-all shadow-inner"
+          />
+          <button 
+            type="submit"
+            className="absolute right-3 top-1/2 -translate-y-1/2 p-3 bg-red-500 text-white rounded-2xl hover:bg-red-600 shadow-lg active:scale-95 transition-all"
+          >
+            <Search className="h-6 w-6" />
+          </button>
+        </form>
+
+        <div className="space-y-4">
+          {filteredResults.length > 0 ? (
+            filteredResults.sort((a,b) => a.date.localeCompare(b.date)).map(res => (
+              <div key={res.id} className="bg-white p-6 rounded-3xl border-2 border-gray-50 shadow-md flex justify-between items-center group hover:border-red-100 transition-all">
+                <div className="space-y-1">
+                  <div className="font-black text-lg text-gray-900">{res.date} <span className="text-red-500 ml-2">({res.startTime}-{res.endTime})</span></div>
+                  <div className="text-xs font-bold text-gray-500">{res.place} {res.courts ? `(${res.courts.join('')})` : ''} | {res.name}</div>
+                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+                    <span>{res.status === 'approved' ? '承認済み' : '承認待ち'}</span>
+                    {res.isRecurring && <span className="bg-indigo-50 text-indigo-500 px-1.5 rounded-sm lowercase text-[8px]">Recurring</span>}
+                  </div>
+                </div>
+                <button 
+                  onClick={() => handleCancel(res.id)}
+                  className="bg-red-50 text-red-500 p-4 rounded-2xl hover:bg-red-500 hover:text-white transition-all shadow-sm"
+                >
+                  <Trash2 className="h-6 w-6" />
+                </button>
+              </div>
+            ))
+          ) : searchTerm && (
+            <div className="text-center py-12 text-gray-400 space-y-2">
+              <AlertTriangle className="h-10 w-10 mx-auto opacity-20" />
+              <p className="font-bold">該当する予約が見つかりません</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 4. 管理者ダッシュボード
 function AdminDashboard({ reservations, onStatusUpdate }) {
   const [printWeekStart, setPrintWeekStart] = useState(formatDateStr(new Date()));
   const [showPrintView, setShowPrintView] = useState(false);
@@ -687,6 +858,7 @@ function AdminDashboard({ reservations, onStatusUpdate }) {
                 <div className="font-black text-xl">{res.date} <span className="text-blue-600 ml-2">({res.startTime}-{res.endTime})</span></div>
                 <div className="text-sm font-bold text-gray-600">{res.place} {res.courts ? `(${res.courts.join('')})` : ''} | {res.name}</div>
                 <div className="text-xs text-gray-400 italic">目的: {res.purpose} | 代表: {res.repName} ({res.phone})</div>
+                {res.isRecurring && <div className="text-[10px] text-indigo-500 font-bold">※定期予約の一括申請に含まれる1日です</div>}
               </div>
               <div className="flex items-center space-x-2">
                 <button onClick={()=>deleteReservation(res.id)} className="px-4 py-2 text-red-500 font-bold text-xs hover:bg-red-50 rounded-xl">削除</button>
@@ -727,7 +899,7 @@ function WeeklyPrintView({ reservations, weekStartStr, onBack }) {
     return formatDateStr(d);
   });
 
-  const courts = ['E', 'D', 'F', 'A', 'B', 'C']; // 用具側、入口側
+  const courts = ['E', 'D', 'F', 'A', 'B', 'C'];
 
   return (
     <div className="space-y-6">
@@ -822,7 +994,7 @@ function WeeklyPrintView({ reservations, weekStartStr, onBack }) {
   );
 }
 
-// 4. 利用ルール
+// 5. 利用ルール
 function RulesView() {
   return (
     <div className="max-w-4xl mx-auto bg-white p-10 sm:p-16 rounded-[3.5rem] border shadow-2xl animate-in fade-in zoom-in-95 duration-500">
