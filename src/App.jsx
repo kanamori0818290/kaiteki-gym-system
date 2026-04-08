@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban } from 'lucide-react';
+import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban, Mail } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, query, writeBatch } from 'firebase/firestore';
@@ -24,6 +24,9 @@ const safeAppId = String(rawAppId).replace(/\//g, '-');
 // --- セキュリティ用パスワード設定 ---
 const PORTAL_PASSWORD = "kaiteki-user";
 const ADMIN_PASSWORD = "admin123";
+
+// 管理用CCメールアドレス
+const ADMIN_CC_EMAIL = "MCJP-DG-RIX_TOYAMA_TAIIKUKAN@mchcgr.com";
 
 // 備品リスト
 const equipmentForAll = [
@@ -867,6 +870,44 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
     }
   };
 
+  // メール立ち上げ処理
+  const launchEmailToReservedUsers = (targetDates) => {
+    // 指定期間内に予約が入っているユーザーを抽出
+    const reservedUsersInPeriod = reservations.filter(r => 
+      targetDates.includes(r.date) && r.email
+    );
+
+    if (reservedUsersInPeriod.length === 0) return;
+
+    // 重複を排除したメールアドレスのリスト
+    const uniqueEmails = [...new Set(reservedUsersInPeriod.map(u => u.email))];
+    const toField = uniqueEmails.join(',');
+
+    // メールの内容を構築
+    const periodDisplay = targetDates.length > 1 
+      ? `${targetDates[0]} 〜 ${targetDates[targetDates.length - 1]}`
+      : targetDates[0];
+
+    const subject = encodeURIComponent("【重要】KAITEKI体育館 施設休館に伴う予約キャンセルのお知らせ");
+    const body = encodeURIComponent(
+      `予約責任者様\n\n` +
+      `いつもKAITEKI体育館をご利用いただきありがとうございます。\n` +
+      `管理担当より、施設休館に伴う予約キャンセルのお願いを申し上げます。\n\n` +
+      `以下の期間、施設メンテナンス等のため休館とさせていただくことになりました。\n` +
+      `該当期間にご予約いただいておりました皆様には大変ご迷惑をおかけいたしますが、\n` +
+      `システム上の予約を取り消しさせていただきますので、何卒ご了承いただけますようお願い申し上げます。\n\n` +
+      `【休館期間】\n${periodDisplay}\n` +
+      `${closedReason ? `【理由】\n${closedReason}\n` : ''}\n` +
+      `※すでにご予約済みの方へ一斉に配信しております。\n` +
+      `本件に関するお問い合わせは管理担当までお願いいたします。\n`
+    );
+
+    const mailtoLink = `mailto:${toField}?cc=${ADMIN_CC_EMAIL}&subject=${subject}&body=${body}`;
+    
+    // メールソフトを立ち上げる
+    window.location.href = mailtoLink;
+  };
+
   // 休館日（期間）追加
   const addClosedPeriod = async (e) => {
     e.preventDefault();
@@ -893,7 +934,6 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
       const closedRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'closed_days');
       
       targetDates.forEach(d => {
-        // 重複チェック（既に設定されている日は飛ばす）
         if (!closedDays.some(cd => cd.date === d)) {
           const newDocRef = doc(closedRef);
           batch.set(newDocRef, {
@@ -905,10 +945,13 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
       });
 
       await batch.commit();
+      
+      // 予約者がいる場合はメール立ち上げを実行
+      launchEmailToReservedUsers(targetDates);
+
       setClosedStart('');
       setClosedEnd('');
       setClosedReason('');
-      showToast('休館日を設定しました');
       onStatusUpdate();
     } catch (err) { alert("保存失敗"); }
   };
@@ -979,7 +1022,12 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
         </div>
 
         <div className="bg-white p-6 rounded-[2rem] border-2 border-red-50 shadow-xl space-y-4">
-          <h3 className="font-bold text-lg flex items-center text-red-900"><Ban className="h-5 w-5 mr-2" /> 休館日の期間設定</h3>
+          <div className="flex justify-between items-center">
+            <h3 className="font-bold text-lg flex items-center text-red-900"><Ban className="h-5 w-5 mr-2" /> 休館日の期間設定</h3>
+            <div className="flex items-center text-[10px] text-gray-400 font-bold bg-gray-50 px-2 py-1 rounded-full">
+              <Mail className="w-3 h-3 mr-1" /> 予約者へ自動通知連携
+            </div>
+          </div>
           <form onSubmit={addClosedPeriod} className="space-y-4">
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
@@ -995,7 +1043,7 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
               <label className="text-[10px] font-bold text-gray-400 px-1 uppercase tracking-widest">理由（任意）</label>
               <input type="text" placeholder="お盆休み、メンテナンスなど" value={closedReason} onChange={(e)=>setClosedReason(e.target.value)} className="w-full border p-2 rounded-xl text-sm font-bold" />
             </div>
-            <button type="submit" className="w-full bg-red-600 text-white py-3 rounded-xl font-bold text-sm hover:bg-red-700 shadow-lg shadow-red-100 transition-all active:scale-95">休館日をまとめて登録</button>
+            <button type="submit" className="w-full bg-red-600 text-white py-3 rounded-xl font-bold text-sm hover:bg-red-700 shadow-lg shadow-red-100 transition-all active:scale-95">休館日をまとめて登録 & メール作成</button>
           </form>
           <div className="pt-4 border-t border-red-50">
              <p className="text-[10px] font-bold text-gray-400 px-1 mb-2 uppercase tracking-widest">設定済みの休館日</p>
