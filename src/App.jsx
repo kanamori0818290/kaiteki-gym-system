@@ -251,7 +251,7 @@ export default function App() {
                 reservations={reservations} 
                 closedDays={closedDays}
                 user={user} 
-                onSuccess={() => {showToast('申し込みを送信しました。承認をお待ちください。'); setActiveTab('calendar');}} 
+                onSuccess={(msg) => {showToast(msg || '申し込みを送信しました。承認をお待ちください。'); setActiveTab('calendar');}} 
               />
             )}
             {activeTab === 'cancel' && <CancelView reservations={reservations} onSuccess={() => { showToast('予約をキャンセルしました'); setActiveTab('calendar'); }} />}
@@ -454,8 +454,21 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
     return dates;
   }, [selectedDate, isRecurring, recurringEndDate]);
 
-  // ターゲット日程の中に休館日が含まれているか
-  const hasClosedDayInTargets = targetDates.some(d => closedDateStrs.includes(d));
+  // ターゲット日程のうち、予約可能な日と休館日を分類
+  const partitionedDates = useMemo(() => {
+    const valid = [];
+    const closed = [];
+    targetDates.forEach(d => {
+      if (closedDateStrs.includes(d)) {
+        closed.push(d);
+      } else {
+        valid.push(d);
+      }
+    });
+    return { valid, closed };
+  }, [targetDates, closedDateStrs]);
+
+  const hasClosedDayInTargets = partitionedDates.closed.length > 0;
 
   const getOccupiedCourts = (date) => {
     if (!date || !formData.startTime || !formData.endTime || formData.place !== '体育館') return [];
@@ -489,15 +502,23 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!user) return alert("認証エラーです");
-    if (hasClosedDayInTargets) return alert("期間内に休館日が含まれているため予約できません。");
+    
+    // 単発予約で休館日の場合
+    if (!isRecurring && isSelectedDateClosed) return alert("休館日のため予約できません。");
+    
+    // 定期予約で全て休館日の場合
+    if (isRecurring && partitionedDates.valid.length === 0) {
+      return alert("選択された期間の全ての日付が休館日のため、予約を送信できません。");
+    }
+
     if (formData.place === '体育館' && selectedCourts.length === 0) return alert("コート(A-F)を選んでください。");
     
     if (targetDates.length > 20) {
       return alert("定期予約は最大20回分までまとめて申請可能です。期間を短くしてください。");
     }
 
-    // 全日程の重複チェック
-    for (const d of targetDates) {
+    // 重複チェック（有効な日程のみ）
+    for (const d of partitionedDates.valid) {
       if (formData.place === '体育館') {
         const occ = getOccupiedCourts(d);
         const conflict = selectedCourts.some(c => occ.includes(c));
@@ -520,7 +541,7 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
       const batch = writeBatch(db);
       const resCollection = collection(db, 'artifacts', safeAppId, 'public', 'data', 'reservations');
       
-      targetDates.forEach(d => {
+      partitionedDates.valid.forEach(d => {
         const newDocRef = doc(resCollection);
         batch.set(newDocRef, {
           date: d, 
@@ -532,12 +553,18 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
           status: 'pending', 
           createdAt: new Date().toISOString(), 
           userId: user.uid,
-          isRecurring: targetDates.length > 1
+          isRecurring: isRecurring
         });
       });
 
       await batch.commit();
-      onSuccess();
+
+      // メッセージの構築
+      let successMsg = '申し込みを送信しました。承認をお待ちください。';
+      if (partitionedDates.closed.length > 0) {
+        successMsg = `一部の日程を除いて申し込みを送信しました。以下の休館日は予約が失敗しました：\n${partitionedDates.closed.join(', ')}`;
+      }
+      onSuccess(successMsg);
     } catch (err) { 
       console.error(err);
       alert("保存に失敗しました。"); 
@@ -606,12 +633,18 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
                   required 
                   value={recurringEndDate} 
                   onChange={(e)=>setRecurringEndDate(e.target.value)} 
-                  className="border-2 border-indigo-100 p-4 rounded-2xl w-full font-bold text-lg text-indigo-900 outline-none focus:border-indigo-500 bg-indigo-50/30" 
+                  className={`border-2 p-4 rounded-2xl w-full font-bold text-lg text-indigo-900 outline-none transition-all ${hasClosedDayInTargets ? 'border-amber-400 bg-amber-50' : 'border-indigo-100 focus:border-indigo-500'}`}
                 />
                 {hasClosedDayInTargets && (
-                  <p className="text-red-500 text-[10px] font-black mt-1 px-1">
-                    ※期間内に休館日が含まれています
-                  </p>
+                  <div className="bg-amber-50 border border-amber-200 p-2 rounded-lg mt-2 space-y-1">
+                    <p className="text-amber-700 text-[10px] font-black flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3" /> 期間内に休館日が含まれています
+                    </p>
+                    <p className="text-amber-600 text-[9px] font-bold leading-tight">
+                      休館日の予約は自動的にスキップされます：<br/>
+                      {partitionedDates.closed.join(', ')}
+                    </p>
+                  </div>
                 )}
               </div>
             )}
@@ -723,11 +756,11 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
       <div className="flex flex-col items-center pt-10 space-y-6">
         <button 
           type="submit" 
-          disabled={isSubmitting || hasClosedDayInTargets || isSelectedDateClosed} 
+          disabled={isSubmitting || (partitionedDates.valid.length === 0)} 
           className="w-full max-w-lg bg-blue-600 text-white py-5 rounded-[2rem] font-bold text-xl hover:bg-blue-700 transition-all shadow-xl active:scale-95 disabled:bg-gray-300 disabled:shadow-none disabled:cursor-not-allowed flex items-center justify-center"
         >
           {isSubmitting ? <><Loader2 className="animate-spin mr-3"/> 送信中...</> : 
-           (isSelectedDateClosed || hasClosedDayInTargets) ? '休館日のため予約不可' : 
+           (partitionedDates.valid.length === 0) ? '休館日のため予約不可' : 
            isRecurring ? `定期予約を一括申請する` : '申し込みを送信する'}
         </button>
       </div>
@@ -872,22 +905,15 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
 
   // メール立ち上げ処理
   const launchEmailToReservedUsers = (targetDates) => {
-    // 指定期間内に予約が入っているユーザーを抽出
     const reservedUsersInPeriod = reservations.filter(r => 
       targetDates.includes(r.date) && r.email
     );
-
     if (reservedUsersInPeriod.length === 0) return;
-
-    // 重複を排除したメールアドレスのリスト
     const uniqueEmails = [...new Set(reservedUsersInPeriod.map(u => u.email))];
     const toField = uniqueEmails.join(',');
-
-    // メールの内容を構築
     const periodDisplay = targetDates.length > 1 
       ? `${targetDates[0]} 〜 ${targetDates[targetDates.length - 1]}`
       : targetDates[0];
-
     const subject = encodeURIComponent("【重要】KAITEKI体育館 施設休館に伴う予約キャンセルのお知らせ");
     const body = encodeURIComponent(
       `予約責任者様\n\n` +
@@ -901,19 +927,13 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
       `※すでにご予約済みの方へ一斉に配信しております。\n` +
       `本件に関するお問い合わせは管理担当までお願いいたします。\n`
     );
-
     const mailtoLink = `mailto:${toField}?cc=${ADMIN_CC_EMAIL}&subject=${subject}&body=${body}`;
-    
-    // メールソフトを立ち上げる
     window.location.href = mailtoLink;
   };
 
-  // 休館日（期間）追加
   const addClosedPeriod = async (e) => {
     e.preventDefault();
     if (!closedStart) return;
-    
-    // 開始日から終了日までのリストを作成
     const targetDates = [closedStart];
     if (closedEnd && closedEnd !== closedStart) {
       let current = new Date(closedStart);
@@ -924,15 +944,12 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
         targetDates.push(formatDateStr(current));
       }
     }
-
     if (targetDates.length > 31) {
       return alert("一度に設定できる休館日は最大31日間です。");
     }
-
     try {
       const batch = writeBatch(db);
       const closedRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'closed_days');
-      
       targetDates.forEach(d => {
         if (!closedDays.some(cd => cd.date === d)) {
           const newDocRef = doc(closedRef);
@@ -943,12 +960,8 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
           });
         }
       });
-
       await batch.commit();
-      
-      // 予約者がいる場合はメール立ち上げを実行
       launchEmailToReservedUsers(targetDates);
-
       setClosedStart('');
       setClosedEnd('');
       setClosedReason('');
@@ -971,7 +984,6 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
       r.name, r.repName, r.phone,
       r.status === 'approved' ? '承認済' : '申請中'
     ]);
-
     const csvContent = "\uFEFF" + [headers, ...rows].map(e => e.join(",")).join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
@@ -986,7 +998,7 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
   const approved = reservations.filter(r => r.status === 'approved').sort((a,b)=>a.date.localeCompare(b.date));
 
   if (showPrintView) {
-    return <WeeklyPrintView reservations={reservations} weekStartStr={printWeekStart} onBack={() => setShowPrintView(false)} />;
+    return <WeeklyPrintView reservations={reservations} closedDays={closedDays} weekStartStr={printWeekStart} onBack={() => setShowPrintView(false)} />;
   }
 
   return (
@@ -1103,7 +1115,7 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
 }
 
 // 印刷用週間ビュー
-function WeeklyPrintView({ reservations, weekStartStr, onBack }) {
+function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
   const weekStart = new Date(weekStartStr);
   const weekDays = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart);
@@ -1111,6 +1123,8 @@ function WeeklyPrintView({ reservations, weekStartStr, onBack }) {
     return formatDateStr(d);
   });
   const courts = ['E', 'D', 'F', 'A', 'B', 'C'];
+  const closedDateStrs = closedDays.map(cd => cd.date);
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center no-print bg-white p-6 rounded-2xl shadow-xl border-2 border-blue-100">
@@ -1141,6 +1155,7 @@ function WeeklyPrintView({ reservations, weekStartStr, onBack }) {
                 return (
                   <th key={d} className={`border-2 border-black p-2 text-center ${dateObj.getDay() === 0 ? 'text-red-500' : dateObj.getDay() === 6 ? 'text-blue-500' : ''}`}>
                     {d.split('-')[1]}/{d.split('-')[2]} ({dayLabels[dateObj.getDay()]})
+                    {closedDateStrs.includes(d) && <div className="text-[8px] text-red-500 font-black">【休館日】</div>}
                   </th>
                 );
               })}
@@ -1153,19 +1168,26 @@ function WeeklyPrintView({ reservations, weekStartStr, onBack }) {
                   {c}<br/><span className="text-[8px] text-gray-400 font-normal">{(['E','D','F'].includes(c)) ? '用具側' : '入口側'}</span>
                 </td>
                 {weekDays.map(d => {
+                  const isClosed = closedDateStrs.includes(d);
                   const dayCourts = reservations
                     .filter(r => r.date === d && r.courts && r.courts.includes(c) && r.status === 'approved')
                     .sort((a,b)=>a.startTime.localeCompare(b.startTime));
                   return (
-                    <td key={d} className="border-2 border-black p-1 align-top relative">
-                      <div className="space-y-1">
-                        {dayCourts.map(res => (
-                          <div key={res.id} className="border border-gray-300 p-1 rounded bg-gray-50/50 leading-tight">
-                            <div className="font-bold text-blue-900 border-b border-gray-200 mb-1">{res.startTime}-{res.endTime}</div>
-                            <div className="font-bold">{res.name}</div>
-                          </div>
-                        ))}
-                      </div>
+                    <td key={d} className={`border-2 border-black p-1 align-top relative ${isClosed ? 'bg-gray-100' : ''}`}>
+                      {isClosed ? (
+                        <div className="flex items-center justify-center h-full">
+                          <Ban className="w-8 h-8 text-gray-300" />
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          {dayCourts.map(res => (
+                            <div key={res.id} className="border border-gray-300 p-1 rounded bg-gray-50/50 leading-tight">
+                              <div className="font-bold text-blue-900 border-b border-gray-200 mb-1">{res.startTime}-{res.endTime}</div>
+                              <div className="font-bold">{res.name}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </td>
                   );
                 })}
@@ -1174,25 +1196,34 @@ function WeeklyPrintView({ reservations, weekStartStr, onBack }) {
             <tr className="h-24">
               <td className="border-2 border-black p-2 text-center font-bold bg-gray-50 text-sm">多目的室</td>
               {weekDays.map(d => {
+                  const isClosed = closedDateStrs.includes(d);
                   const rooms = reservations
                     .filter(r => r.date === d && r.place === '多目的室' && r.status === 'approved')
                     .sort((a,b)=>a.startTime.localeCompare(b.startTime));
                   return (
-                    <td key={d} className="border-2 border-black p-1 align-top">
-                      <div className="space-y-1">
-                        {rooms.map(res => (
-                          <div key={res.id} className="border border-gray-300 p-1 rounded bg-gray-50/50 leading-tight">
-                            <div className="font-bold text-green-800 border-b border-gray-200 mb-1">{res.startTime}-{res.endTime}</div>
-                            <div className="font-bold">{res.name}</div>
-                          </div>
-                        ))}
-                      </div>
+                    <td key={d} className={`border-2 border-black p-1 align-top ${isClosed ? 'bg-gray-100' : ''}`}>
+                      {isClosed ? (
+                        <div className="flex items-center justify-center h-full text-gray-300 font-bold uppercase tracking-widest text-[8px]">Closed</div>
+                      ) : (
+                        <div className="space-y-1">
+                          {rooms.map(res => (
+                            <div key={res.id} className="border border-gray-300 p-1 rounded bg-gray-50/50 leading-tight">
+                              <div className="font-bold text-green-800 border-b border-gray-200 mb-1">{res.startTime}-{res.endTime}</div>
+                              <div className="font-bold">{res.name}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </td>
                   );
               })}
             </tr>
           </tbody>
         </table>
+        <div className="mt-4 flex justify-between items-end text-[10px] font-bold text-gray-400">
+          <div>※管理者承認済みの予約のみ表示しています。</div>
+          <div>出力日時: {new Date().toLocaleString()}</div>
+        </div>
       </div>
     </div>
   );
