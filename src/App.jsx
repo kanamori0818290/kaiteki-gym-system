@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban, Mail } from 'lucide-react';
+import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban, Mail, Key } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, query, writeBatch } from 'firebase/firestore';
@@ -95,7 +95,6 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     
-    // 予約データの購読
     const resRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'reservations');
     const unsubRes = onSnapshot(resRef, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -106,7 +105,6 @@ export default function App() {
       setIsLoading(false); 
     });
 
-    // 休館日データの購読
     const closedRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'closed_days');
     const unsubClosed = onSnapshot(closedRef, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -424,7 +422,7 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
   const [userType, setUserType] = useState('external');
   const [selectedDate, setSelectedDate] = useState(initialDate || '');
   const [formData, setFormData] = useState({ 
-    name: '', repName: '', email: '', phone: '', startTime: '', endTime: '', place: '', purpose: '' 
+    name: '', repName: '', email: '', phone: '', startTime: '', endTime: '', place: '', purpose: '', deletePass: '' 
   });
   const [selectedCourts, setSelectedCourts] = useState([]);
   const [equipment, setEquipment] = useState([]);
@@ -434,11 +432,9 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringEndDate, setRecurringEndDate] = useState('');
 
-  // 現在の日付が休館日かどうかを判定
   const closedDateStrs = useMemo(() => closedDays.map(cd => cd.date), [closedDays]);
   const isSelectedDateClosed = closedDateStrs.includes(selectedDate);
 
-  // ターゲットとなる全ての日程を計算
   const targetDates = useMemo(() => {
     if (!selectedDate) return [];
     let dates = [selectedDate];
@@ -454,7 +450,6 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
     return dates;
   }, [selectedDate, isRecurring, recurringEndDate]);
 
-  // ターゲット日程のうち、予約可能な日と休館日を分類
   const partitionedDates = useMemo(() => {
     const valid = [];
     const closed = [];
@@ -502,11 +497,10 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!user) return alert("認証エラーです");
+    if (!formData.deletePass) return alert("取り消し用パスワードを設定してください。");
     
-    // 単発予約で休館日の場合
     if (!isRecurring && isSelectedDateClosed) return alert("休館日のため予約できません。");
     
-    // 定期予約で全て休館日の場合
     if (isRecurring && partitionedDates.valid.length === 0) {
       return alert("選択された期間の全ての日付が休館日のため、予約を送信できません。");
     }
@@ -517,7 +511,6 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
       return alert("定期予約は最大20回分までまとめて申請可能です。期間を短くしてください。");
     }
 
-    // 重複チェック（有効な日程のみ）
     for (const d of partitionedDates.valid) {
       if (formData.place === '体育館') {
         const occ = getOccupiedCourts(d);
@@ -559,7 +552,6 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
 
       await batch.commit();
 
-      // メッセージの構築
       let successMsg = '申し込みを送信しました。承認をお待ちください。';
       if (partitionedDates.closed.length > 0) {
         successMsg = `一部の日程を除いて申し込みを送信しました。以下の休館日は予約が失敗しました：\n${partitionedDates.closed.join(', ')}`;
@@ -596,6 +588,8 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
             <InputField label="利用責任者 *" value={formData.repName} onChange={(v)=>setFormData({...formData, repName:v})} placeholder="代表者名" />
             <InputField label="メール *" type="email" value={formData.email} onChange={(v)=>setFormData({...formData, email:v})} placeholder="example@email.com" />
             <InputField label="緊急連絡先 *" type="tel" value={formData.phone} onChange={(v)=>setFormData({...formData, phone:v})} placeholder="090-XXXX-XXXX" />
+            <InputField label="取消用パスワード *" type="password" value={formData.deletePass} onChange={(v)=>setFormData({...formData, deletePass:v})} placeholder="数字4桁など" />
+            <p className="text-[9px] text-gray-400 font-bold px-2">※予約の取り消しに必要です。忘れないようにしてください。</p>
           </div>
         </div>
 
@@ -798,6 +792,7 @@ function CourtButton({ label, active, occupied, onClick }) {
 function CancelView({ reservations, onSuccess }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredResults, setFilteredResults] = useState([]);
+  const [inputDeletePass, setInputDeletePass] = useState('');
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -810,11 +805,22 @@ function CancelView({ reservations, onSuccess }) {
     setFilteredResults(results);
   };
 
-  const handleCancel = async (id) => {
+  const handleCancel = async (targetRes) => {
+    if (!inputDeletePass) {
+      alert("取消用パスワードを入力してください。");
+      return;
+    }
+    
+    if (targetRes.deletePass !== inputDeletePass) {
+      alert("パスワードが正しくありません。");
+      return;
+    }
+
     if (window.confirm('この予約を取り消しますか？取り消すと元に戻せません。')) {
       try {
-        await deleteDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', id));
+        await deleteDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', targetRes.id));
         onSuccess();
+        setInputDeletePass('');
       } catch (err) {
         alert("削除に失敗しました。");
       }
@@ -848,6 +854,19 @@ function CancelView({ reservations, onSuccess }) {
         </form>
 
         <div className="space-y-4">
+          {filteredResults.length > 0 && (
+            <div className="bg-red-50 p-4 rounded-2xl mb-4 border border-red-100 flex items-center gap-3">
+              <Key className="h-5 w-5 text-red-500" />
+              <input 
+                type="password" 
+                placeholder="取消用パスワードを入力" 
+                value={inputDeletePass}
+                onChange={(e) => setInputDeletePass(e.target.value)}
+                className="bg-white border-2 border-red-200 rounded-xl px-4 py-2 flex-1 text-sm font-bold outline-none focus:border-red-500"
+              />
+            </div>
+          )}
+
           {filteredResults.length > 0 ? (
             filteredResults.sort((a,b) => a.date.localeCompare(b.date)).map(res => (
               <div key={res.id} className="bg-white p-6 rounded-3xl border-2 border-gray-50 shadow-md flex justify-between items-center group hover:border-red-100 transition-all">
@@ -860,7 +879,7 @@ function CancelView({ reservations, onSuccess }) {
                   </div>
                 </div>
                 <button 
-                  onClick={() => handleCancel(res.id)}
+                  onClick={() => handleCancel(res)}
                   className="bg-red-50 text-red-500 p-4 rounded-2xl hover:bg-red-500 hover:text-white transition-all shadow-sm"
                 >
                   <Trash2 className="h-6 w-6" />
@@ -884,7 +903,6 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
   const [printWeekStart, setPrintWeekStart] = useState(formatDateStr(new Date()));
   const [showPrintView, setShowPrintView] = useState(false);
   
-  // 休館日設定用ステート（期間対応）
   const [closedStart, setClosedStart] = useState('');
   const [closedEnd, setClosedEnd] = useState('');
   const [closedReason, setClosedReason] = useState('');
@@ -897,13 +915,12 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
   };
 
   const deleteReservation = async (id) => {
-    if (window.confirm('却下・削除しますか？')) {
+    if (window.confirm('管理者としてこの予約を却下・削除しますか？（利用者のパスワードは不要です）')) {
       await deleteDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', id));
       onStatusUpdate();
     }
   };
 
-  // メール立ち上げ処理
   const launchEmailToReservedUsers = (targetDates) => {
     const reservedUsersInPeriod = reservations.filter(r => 
       targetDates.includes(r.date) && r.email
@@ -1085,7 +1102,7 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
                 {res.isRecurring && <div className="text-[10px] text-indigo-500 font-bold">※定期予約の一括申請</div>}
               </div>
               <div className="flex items-center space-x-2">
-                <button onClick={()=>deleteReservation(res.id)} className="px-4 py-2 text-red-500 font-bold text-xs hover:bg-red-50 rounded-xl">削除</button>
+                <button onClick={()=>deleteReservation(res.id)} className="px-4 py-2 text-red-500 font-bold text-xs hover:bg-red-50 rounded-xl">却下・削除</button>
                 <button onClick={()=>updateStatus(res.id, 'approved')} className="bg-green-600 text-white px-8 py-3 rounded-full font-bold shadow-lg flex items-center space-x-2 active:scale-95">
                   <Check className="h-4 w-4" />
                   <span>承認する</span>
@@ -1101,11 +1118,14 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {approved.map(res => (
             <div key={res.id} className="bg-white p-4 rounded-2xl border shadow-sm flex justify-between items-center group">
-              <div className="truncate pr-4">
+              <div className="truncate pr-4 border-r mr-2">
                 <div className="font-bold text-sm text-gray-800 truncate">{res.date} ({res.startTime})</div>
                 <div className="text-[10px] text-gray-400 font-bold truncate">{res.place} | {res.name}</div>
               </div>
-              <button onClick={()=>updateStatus(res.id, 'pending')} className="text-[10px] text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">未承認に戻す</button>
+              <div className="flex flex-col items-end gap-1">
+                <button onClick={()=>updateStatus(res.id, 'pending')} className="text-[8px] text-gray-400 hover:text-blue-600 font-bold transition-all">未承認に戻す</button>
+                <button onClick={()=>deleteReservation(res.id)} className="text-[8px] text-red-300 hover:text-red-600 font-bold transition-all">予約削除</button>
+              </div>
             </div>
           ))}
         </div>
