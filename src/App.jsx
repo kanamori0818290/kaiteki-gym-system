@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban, Mail, Key } from 'lucide-react';
+import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban, Mail, Key, UserCheck } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, query, writeBatch } from 'firebase/firestore';
@@ -422,11 +422,10 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
   const [userType, setUserType] = useState('external');
   const [selectedDate, setSelectedDate] = useState(initialDate || '');
   const [formData, setFormData] = useState({ 
-    name: '', repName: '', email: '', phone: '', startTime: '', endTime: '', place: '', purpose: '', deletePass: '' 
+    name: '', repName: '', email: '', phone: '', startTime: '', endTime: '', place: '', purpose: '', deletePass: '', userCount: ''
   });
   const [selectedCourts, setSelectedCourts] = useState([]);
   const [equipment, setEquipment] = useState([]);
-  const [members, setMembers] = useState([{ name: '', address: '' }]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const [isRecurring, setIsRecurring] = useState(false);
@@ -487,9 +486,6 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
     });
   };
 
-  const handleAddMember = () => setMembers([...members, { name: '', address: '' }]);
-  const handleRemoveMember = (idx) => setMembers(members.filter((_, i) => i !== idx));
-
   const toggleEquipment = (item) => {
     setEquipment(prev => prev.includes(item) ? prev.filter(i => i !== item) : [...prev, item]);
   };
@@ -542,7 +538,6 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
           ...formData, 
           courts: formData.place === '体育館' ? selectedCourts : null,
           equipment, 
-          members, 
           status: 'pending', 
           createdAt: new Date().toISOString(), 
           userId: user.uid,
@@ -585,11 +580,14 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
           </div>
           <div className="space-y-4">
             <InputField label="利用団体名 *" value={formData.name} onChange={(v)=>setFormData({...formData, name:v})} placeholder="団体名を入力" />
-            <InputField label="利用責任者 *" value={formData.repName} onChange={(v)=>setFormData({...formData, repName:v})} placeholder="代表者名" />
+            <InputField label="利用責任者氏名 *" value={formData.repName} onChange={(v)=>setFormData({...formData, repName:v})} placeholder="代表者名" />
+            <div className="grid grid-cols-2 gap-4">
+              <InputField label="使用人数 *" type="number" value={formData.userCount} onChange={(v)=>setFormData({...formData, userCount:v})} placeholder="名" />
+              <InputField label="取消用パスワード *" type="password" value={formData.deletePass} onChange={(v)=>setFormData({...formData, deletePass:v})} placeholder="数字4桁など" />
+            </div>
             <InputField label="メール *" type="email" value={formData.email} onChange={(v)=>setFormData({...formData, email:v})} placeholder="example@email.com" />
             <InputField label="緊急連絡先 *" type="tel" value={formData.phone} onChange={(v)=>setFormData({...formData, phone:v})} placeholder="090-XXXX-XXXX" />
-            <InputField label="取消用パスワード *" type="password" value={formData.deletePass} onChange={(v)=>setFormData({...formData, deletePass:v})} placeholder="数字4桁など" />
-            <p className="text-[9px] text-gray-400 font-bold px-2">※予約の取り消しに必要です。忘れないようにしてください。</p>
+            <p className="text-[9px] text-gray-400 font-bold px-2">※取消用パスワードは予約の取り消しに必要です。忘れないようにしてください。</p>
           </div>
         </div>
 
@@ -692,6 +690,10 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
                 </div>
               )}
             </div>
+            <div className="space-y-2 px-2">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">利用目的 *</label>
+              <textarea required placeholder="例：バレー練習" value={formData.purpose} onChange={(e)=>setFormData({...formData, purpose:e.target.value})} className="bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white p-4 rounded-2xl w-full text-sm font-bold h-20 outline-none transition-all shadow-inner" />
+            </div>
           </div>
         </div>
 
@@ -720,29 +722,6 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
                 ))}
               </div>
             </div>
-          </div>
-        </div>
-
-        <div className="bg-white p-8 rounded-[2.5rem] border shadow-lg space-y-6 lg:col-span-2">
-          <div className="flex justify-between items-center border-b-2 border-blue-50 pb-3">
-            <h3 className="font-bold flex items-center text-blue-900 text-lg tracking-tight"><Plus className="h-7 w-7 mr-3 text-blue-500"/> ④ 利用者名簿</h3>
-            <button type="button" onClick={handleAddMember} className="bg-blue-50 text-blue-600 font-bold px-4 py-2 rounded-full hover:bg-blue-100 transition-colors flex items-center shadow-sm text-sm"><Plus className="h-4 w-4 mr-1"/>行を追加</button>
-          </div>
-          <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 px-2">
-            {members.map((m, idx) => (
-              <div key={idx} className="flex space-x-3 items-center bg-gray-50 p-3 rounded-2xl border-2 border-transparent hover:border-blue-100 transition-all">
-                <span className="text-[10px] font-bold text-gray-300 w-4 text-center">{idx + 1}</span>
-                <input required type="text" placeholder="氏名" value={m.name} onChange={(e) => {
-                  const n = [...members]; n[idx].name = e.target.value; setMembers(n);
-                }} className="bg-white border-2 border-transparent focus:border-blue-300 p-2.5 rounded-xl flex-1 text-sm font-bold outline-none shadow-sm" />
-                <input required type="text" placeholder="住所（町名まで）" value={m.address} onChange={(e) => {
-                  const n = [...members]; n[idx].address = e.target.value; setMembers(n);
-                }} className="bg-white border-2 border-transparent focus:border-blue-300 p-2.5 rounded-xl flex-[2] text-sm font-bold outline-none shadow-sm" />
-                {members.length > 1 && (
-                  <button type="button" onClick={() => handleRemoveMember(idx)} className="text-red-300 hover:text-red-600 transition-all p-2.5 hover:bg-white rounded-full"><Trash2 className="h-5 w-5" /></button>
-                )}
-              </div>
-            ))}
           </div>
         </div>
       </div>
@@ -994,11 +973,11 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
   };
 
   const exportToCSV = () => {
-    const headers = ["利用日", "開始", "終了", "場所", "コート", "団体名", "代表者", "電話番号", "ステータス"];
+    const headers = ["利用日", "開始", "終了", "場所", "コート", "団体名", "代表者", "使用人数", "電話番号", "ステータス"];
     const rows = reservations.map(r => [
       r.date, r.startTime, r.endTime, r.place, 
       r.courts ? r.courts.join('') : '-',
-      r.name, r.repName, r.phone,
+      r.name, r.repName, r.userCount || '-', r.phone,
       r.status === 'approved' ? '承認済' : '申請中'
     ]);
     const csvContent = "\uFEFF" + [headers, ...rows].map(e => e.join(",")).join("\n");
@@ -1098,7 +1077,11 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
               <div className="flex-1 space-y-1">
                 <div className="font-black text-xl">{res.date} <span className="text-blue-600 ml-2">({res.startTime}-{res.endTime})</span></div>
                 <div className="text-sm font-bold text-gray-600">{res.place} {res.courts ? `(${res.courts.join('')})` : ''} | {res.name}</div>
-                <div className="text-xs text-gray-400 italic">目的: {res.purpose} | 代表: {res.repName} ({res.phone})</div>
+                <div className="text-xs text-gray-400 italic flex items-center gap-4">
+                  <span>目的: {res.purpose}</span>
+                  <span className="flex items-center gap-1"><UserCheck className="h-3 w-3" /> 使用人数: {res.userCount}名</span>
+                  <span>代表: {res.repName} ({res.phone})</span>
+                </div>
                 {res.isRecurring && <div className="text-[10px] text-indigo-500 font-bold">※定期予約の一括申請</div>}
               </div>
               <div className="flex items-center space-x-2">
@@ -1120,7 +1103,7 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
             <div key={res.id} className="bg-white p-4 rounded-2xl border shadow-sm flex justify-between items-center group">
               <div className="truncate pr-4 border-r mr-2">
                 <div className="font-bold text-sm text-gray-800 truncate">{res.date} ({res.startTime})</div>
-                <div className="text-[10px] text-gray-400 font-bold truncate">{res.place} | {res.name}</div>
+                <div className="text-[10px] text-gray-400 font-bold truncate">{res.place} | {res.name} ({res.userCount || '-'}名)</div>
               </div>
               <div className="flex flex-col items-end gap-1">
                 <button onClick={()=>updateStatus(res.id, 'pending')} className="text-[8px] text-gray-400 hover:text-blue-600 font-bold transition-all">未承認に戻す</button>
@@ -1203,7 +1186,7 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                           {dayCourts.map(res => (
                             <div key={res.id} className="border border-gray-300 p-1 rounded bg-gray-50/50 leading-tight">
                               <div className="font-bold text-blue-900 border-b border-gray-200 mb-1">{res.startTime}-{res.endTime}</div>
-                              <div className="font-bold">{res.name}</div>
+                              <div className="font-bold">{res.name} {res.userCount ? `(${res.userCount}名)` : ''}</div>
                             </div>
                           ))}
                         </div>
@@ -1229,7 +1212,7 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                           {rooms.map(res => (
                             <div key={res.id} className="border border-gray-300 p-1 rounded bg-gray-50/50 leading-tight">
                               <div className="font-bold text-green-800 border-b border-gray-200 mb-1">{res.startTime}-{res.endTime}</div>
-                              <div className="font-bold">{res.name}</div>
+                              <div className="font-bold">{res.name} {res.userCount ? `(${res.userCount}名)` : ''}</div>
                             </div>
                           ))}
                         </div>
@@ -1296,7 +1279,7 @@ function RulesView() {
           <h3 className="flex items-center text-blue-800 text-2xl mb-8 border-l-[10px] border-blue-700 pl-6 tracking-tight font-black">③ 遵守事項</h3>
           <ul className="space-y-6 font-bold text-gray-700">
             {[
-              { t: "名簿提出", c: "入館時は必ずシステム上で名簿（団体名、氏名等）を提出してください。" },
+              { t: "ルール厳守", c: "予約時に申請した人数を大きく超える利用は避けてください。" },
               { t: "飲食禁止", c: "アリーナ内は食事厳禁。食事は2階休憩スペースか多目的室で。" },
               { t: "清掃徹底", c: "終了後は用具を戻し、必ずモップ掛けを行ってください。ゴミは各自持ち帰り。" },
               { t: "駐車場", c: "指定場所のみ駐車可。路上駐車禁止。路面表示、一方通行を遵守。" },
