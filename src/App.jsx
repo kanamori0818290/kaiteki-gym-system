@@ -249,7 +249,7 @@ export default function App() {
                 reservations={reservations} 
                 closedDays={closedDays}
                 user={user} 
-                onSuccess={(msg) => {showToast(msg || '申し込みを送信しました。承認をお待ちください。'); setActiveTab('calendar');}} 
+                onSuccess={(msg) => {showToast(msg || '予約が完了しました。'); setActiveTab('calendar');}} 
               />
             )}
             {activeTab === 'cancel' && <CancelView reservations={reservations} onSuccess={() => { showToast('予約をキャンセルしました'); setActiveTab('calendar'); }} />}
@@ -316,8 +316,7 @@ function CalendarView({ reservations, closedDays, onReserveClick }) {
       <div className="flex flex-col sm:flex-row justify-between items-end gap-4">
         <h2 className="text-2xl font-bold text-gray-800 flex items-center tracking-tight"><CalendarDays className="mr-2 h-7 w-7 text-blue-600"/> 予約状況カレンダー</h2>
         <div className="flex space-x-4 text-xs bg-white px-4 py-2 rounded-xl shadow-sm border font-bold">
-          <span className="flex items-center"><span className="w-3 h-3 rounded-full bg-blue-500 mr-1.5 shadow-sm border border-white"></span>承認済</span>
-          <span className="flex items-center"><span className="w-3 h-3 rounded-full bg-yellow-400 mr-1.5 shadow-sm border border-white"></span>申請中</span>
+          <span className="flex items-center"><span className="w-3 h-3 rounded-full bg-blue-500 mr-1.5 shadow-sm border border-white"></span>予約確定済</span>
           <span className="flex items-center text-red-500"><Ban className="w-3 h-3 mr-1" />休館日</span>
         </div>
       </div>
@@ -337,8 +336,7 @@ function CalendarView({ reservations, closedDays, onReserveClick }) {
               const dStr = formatDateStr(new Date(currentYear, currentMonth - 1, d));
               const dayRes = reservations.filter(r => r.date === dStr);
               const isClosed = closedDays.some(cd => cd.date === dStr);
-              const hasApp = dayRes.some(r => r.status === 'approved');
-              const hasPen = dayRes.some(r => r.status === 'pending');
+              const hasApp = dayRes.length > 0;
               const isToday = formatDateStr(new Date()) === dStr;
               
               return (
@@ -356,7 +354,6 @@ function CalendarView({ reservations, closedDays, onReserveClick }) {
                     {isClosed && <span className="text-[8px] font-black text-red-500 tracking-tighter">休館</span>}
                     <div className="flex space-x-1 mb-1">
                       {hasApp && <div className="w-2.5 h-2.5 rounded-full bg-blue-500 shadow-sm border border-white" />}
-                      {hasPen && <div className="w-2.5 h-2.5 rounded-full bg-yellow-400 shadow-sm border border-white" />}
                     </div>
                   </div>
                 </button>
@@ -383,14 +380,14 @@ function CalendarView({ reservations, closedDays, onReserveClick }) {
             {selectedDayReservations.length > 0 ? (
               <div className="space-y-4">
                 {selectedDayReservations.sort((a,b)=>(a.startTime || "").localeCompare(b.startTime || "")).map(res => (
-                  <div key={res.id} className={`border-l-8 p-4 rounded-xl shadow bg-white transition-all hover:scale-[1.02] ${res.status === 'approved' ? 'border-blue-500' : 'border-yellow-400'}`}>
+                  <div key={res.id} className="border-l-8 border-blue-500 p-4 rounded-xl shadow bg-white transition-all hover:scale-[1.02]">
                     <div className="text-base font-bold text-gray-900 mb-1 tracking-tight">{res.startTime || '--:--'} - {res.endTime || '--:--'}</div>
                     <div className="text-xs font-bold text-blue-700 my-1 bg-blue-50 px-2 py-0.5 rounded inline-block">
                       {res.place} {res.courts ? `(${Array.isArray(res.courts) ? res.courts.join('') : res.courts})` : ''}
                     </div>
                     <div className="text-[10px] font-bold text-gray-500 border-t pt-2 mt-2 truncate">団体: <span className="text-gray-700">{res.name}</span></div>
-                    <div className={`mt-2 text-[9px] font-black px-3 py-0.5 inline-block rounded-full shadow-sm uppercase ${res.status === 'approved' ? 'bg-blue-600 text-white' : 'bg-yellow-400 text-yellow-900'}`}>
-                      {res.status === 'approved' ? '利用確定' : '申請中'}
+                    <div className="mt-2 text-[9px] font-black px-3 py-0.5 inline-block rounded-full shadow-sm uppercase bg-blue-600 text-white">
+                      予約確定済
                     </div>
                   </div>
                 ))}
@@ -417,14 +414,13 @@ function CalendarView({ reservations, closedDays, onReserveClick }) {
   );
 }
 
-// 2. 新規予約フォーム
+// 2. 予約フォーム
 function ReservationForm({ initialDate, reservations, closedDays, user, onSuccess }) {
   const [userType, setUserType] = useState('external');
   const [selectedDate, setSelectedDate] = useState(initialDate || '');
   const [formData, setFormData] = useState({ 
     name: '', repName: '', email: '', phone: '', startTime: '', endTime: '', purpose: '', deletePass: '', userCount: ''
   });
-  // 施設選択を配列で管理
   const [selectedFacilities, setSelectedFacilities] = useState(['体育館']);
   const [selectedCourts, setSelectedCourts] = useState([]);
   const [equipment, setEquipment] = useState([]);
@@ -480,7 +476,6 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
     setSelectedFacilities(prev => 
       prev.includes(facility) ? prev.filter(f => f !== facility) : [...prev, facility]
     );
-    // 体育館を外した場合はコート選択もクリア
     if (facility === '体育館' && selectedFacilities.includes('体育館')) {
       setSelectedCourts([]);
     }
@@ -509,36 +504,25 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
     if (!formData.deletePass) return alert("取り消し用パスワードを設定してください。");
     
     if (!isRecurring && isSelectedDateClosed) return alert("休館日のため予約できません。");
-    
     if (isRecurring && partitionedDates.valid.length === 0) {
       return alert("選択された期間の全ての日付が休館日のため、予約を送信できません。");
     }
 
     if (selectedFacilities.includes('体育館') && selectedCourts.length === 0) return alert("コート(A-F)を選んでください。");
-    
-    if (targetDates.length > 20) {
-      return alert("定期予約は最大20回分までまとめて申請可能です。期間を短くしてください。");
-    }
+    if (targetDates.length > 20) return alert("定期予約は最大20回分までまとめて申請可能です。");
 
-    // 全日程の重複チェック
     for (const d of partitionedDates.valid) {
-      // 体育館の重複チェック
       if (selectedFacilities.includes('体育館')) {
         const occ = getOccupiedCourts(d);
         const conflict = selectedCourts.some(c => occ.includes(c));
-        if (conflict) {
-          return alert(`${d} に指定のコートが既に予約されています。`);
-        }
+        if (conflict) return alert(`${d} に指定のコートが既に予約されています。`);
       }
-      // 多目的室の重複チェック
       if (selectedFacilities.includes('多目的室')) {
         const roomConflict = reservations.some(r => 
-          r.date === d && r.place.includes('多目的室') && r.status === 'approved' &&
+          r.date === d && r.place.includes('多目的室') &&
           isTimeOverlapping(formData.startTime, formData.endTime, r.startTime, r.endTime)
         );
-        if (roomConflict) {
-          return alert(`${d} の多目的室は既に予約されています。`);
-        }
+        if (roomConflict) return alert(`${d} の多目的室は既に予約されています。`);
       }
     }
     
@@ -553,10 +537,10 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
           date: d, 
           userType, 
           ...formData, 
-          place: selectedFacilities.join(', '), // カンマ区切りの文字列で保存
+          place: selectedFacilities.join(', '), 
           courts: selectedFacilities.includes('体育館') ? selectedCourts : null,
           equipment, 
-          status: 'pending', 
+          status: 'approved', // 初めから承認済み
           createdAt: new Date().toISOString(), 
           userId: user.uid,
           isRecurring: isRecurring
@@ -565,13 +549,12 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
 
       await batch.commit();
 
-      let successMsg = '申し込みを送信しました。承認をお待ちください。';
+      let successMsg = '予約が完了しました。';
       if (partitionedDates.closed.length > 0) {
-        successMsg = `一部の日程を除いて申し込みを送信しました。以下の休館日は予約が失敗しました：\n${partitionedDates.closed.join(', ')}`;
+        successMsg = `一部の日程を除いて予約が完了しました。以下の休館日は除外されました：\n${partitionedDates.closed.join(', ')}`;
       }
       onSuccess(successMsg);
     } catch (err) { 
-      console.error(err);
       alert("保存に失敗しました。"); 
     } finally { 
       setIsSubmitting(false); 
@@ -605,7 +588,7 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
             </div>
             <InputField label="メール *" type="email" value={formData.email} onChange={(v)=>setFormData({...formData, email:v})} placeholder="example@email.com" />
             <InputField label="緊急連絡先 *" type="tel" value={formData.phone} onChange={(v)=>setFormData({...formData, phone:v})} placeholder="090-XXXX-XXXX" />
-            <p className="text-[9px] text-gray-400 font-bold px-2">※取消用パスワードは予約の取り消しに必要です。忘れないようにしてください。</p>
+            <p className="text-[9px] text-gray-400 font-bold px-2">※取消用パスワードは予約の取り消しに必要です。</p>
           </div>
         </div>
 
@@ -625,12 +608,7 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
                 </button>
               </div>
               <input type="date" required value={selectedDate} onChange={(e)=>setSelectedDate(e.target.value)} className={`border-2 p-4 rounded-2xl w-full font-bold text-lg outline-none transition-all ${isSelectedDateClosed ? 'border-red-500 bg-red-50 text-red-900' : 'border-gray-100 text-blue-900 focus:border-blue-500'}`} />
-              
-              {isSelectedDateClosed && (
-                <p className="text-red-500 text-xs font-black flex items-center gap-1 mt-1 px-1">
-                  <Ban className="w-3 h-3" /> 休館日のため予約できません
-                </p>
-              )}
+              {isSelectedDateClosed && <p className="text-red-500 text-xs font-black flex items-center gap-1 mt-1 px-1"><Ban className="w-3 h-3" /> 休館日のため予約できません</p>}
             </div>
 
             {isRecurring && (
@@ -638,22 +616,10 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
                 <label className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest px-1 flex items-center gap-2">
                   <RefreshCw className="w-3 h-3" /> 定期予約の終了日 *
                 </label>
-                <input 
-                  type="date" 
-                  required 
-                  value={recurringEndDate} 
-                  onChange={(e)=>setRecurringEndDate(e.target.value)} 
-                  className={`border-2 p-4 rounded-2xl w-full font-bold text-lg text-indigo-900 outline-none transition-all ${hasClosedDayInTargets ? 'border-amber-400 bg-amber-50' : 'border-indigo-100 focus:border-indigo-500'}`}
-                />
+                <input type="date" required value={recurringEndDate} onChange={(e)=>setRecurringEndDate(e.target.value)} className={`border-2 p-4 rounded-2xl w-full font-bold text-lg text-indigo-900 outline-none transition-all ${hasClosedDayInTargets ? 'border-amber-400 bg-amber-50' : 'border-indigo-100 focus:border-indigo-500'}`} />
                 {hasClosedDayInTargets && (
                   <div className="bg-amber-50 border border-amber-200 p-2 rounded-lg mt-2 space-y-1">
-                    <p className="text-amber-700 text-[10px] font-black flex items-center gap-1">
-                      <AlertTriangle className="w-3 h-3" /> 期間内に休館日が含まれています
-                    </p>
-                    <p className="text-amber-600 text-[9px] font-bold leading-tight">
-                      休館日の予約は自動的にスキップされます：<br/>
-                      {partitionedDates.closed.join(', ')}
-                    </p>
+                    <p className="text-amber-700 text-[10px] font-black flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> 休館日が含まれています（自動除外）</p>
                   </div>
                 )}
               </div>
@@ -756,7 +722,7 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
         >
           {isSubmitting ? <><Loader2 className="animate-spin mr-3"/> 送信中...</> : 
            (partitionedDates.valid.length === 0) ? '休館日のため予約不可' : 
-           isRecurring ? `定期予約を一括申請する` : '申し込みを送信する'}
+           isRecurring ? `定期予約を一括確定する` : '予約を確定する'}
         </button>
       </div>
     </form>
@@ -807,17 +773,10 @@ function CancelView({ reservations, onSuccess }) {
   };
 
   const handleCancel = async (targetRes) => {
-    if (!inputDeletePass) {
-      alert("取消用パスワードを入力してください。");
-      return;
-    }
-    
-    if (targetRes.deletePass !== inputDeletePass) {
-      alert("パスワードが正しくありません。");
-      return;
-    }
+    if (!inputDeletePass) return alert("取消用パスワードを入力してください。");
+    if (targetRes.deletePass !== inputDeletePass) return alert("パスワードが正しくありません。");
 
-    if (window.confirm('この予約を取り消しますか？取り消すと元に戻せません。')) {
+    if (window.confirm('この予約を取り消しますか？')) {
       try {
         await deleteDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', targetRes.id));
         onSuccess();
@@ -834,22 +793,13 @@ function CancelView({ reservations, onSuccess }) {
         <h2 className="text-3xl font-black text-gray-900 tracking-tight flex items-center justify-center">
           <XCircle className="mr-3 h-8 w-8 text-red-500" /> 予約の取り消し
         </h2>
-        <p className="text-sm text-gray-500 font-bold">電話番号または氏名で予約を検索してください</p>
+        <p className="text-sm text-gray-500 font-bold">電話番号または氏名で検索してください</p>
       </div>
 
       <div className="bg-white p-8 rounded-[2.5rem] border shadow-xl">
         <form onSubmit={handleSearch} className="relative group mb-8">
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="電話番号または責任者名を入力"
-            className="w-full pl-6 pr-14 py-4 bg-gray-50 border-4 border-transparent focus:border-red-400 focus:bg-white rounded-[2rem] text-lg font-bold outline-none transition-all shadow-inner"
-          />
-          <button 
-            type="submit"
-            className="absolute right-3 top-1/2 -translate-y-1/2 p-3 bg-red-500 text-white rounded-2xl hover:bg-red-600 shadow-lg active:scale-95 transition-all"
-          >
+          <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="電話番号または責任者名を入力" className="w-full pl-6 pr-14 py-4 bg-gray-50 border-4 border-transparent focus:border-red-400 focus:bg-white rounded-[2rem] text-lg font-bold outline-none transition-all shadow-inner" />
+          <button type="submit" className="absolute right-3 top-1/2 -translate-y-1/2 p-3 bg-red-500 text-white rounded-2xl hover:bg-red-600 shadow-lg active:scale-95 transition-all">
             <Search className="h-6 w-6" />
           </button>
         </form>
@@ -858,31 +808,17 @@ function CancelView({ reservations, onSuccess }) {
           {filteredResults.length > 0 && (
             <div className="bg-red-50 p-4 rounded-2xl mb-4 border border-red-100 flex items-center gap-3">
               <Key className="h-5 w-5 text-red-500" />
-              <input 
-                type="password" 
-                placeholder="取消用パスワードを入力" 
-                value={inputDeletePass}
-                onChange={(e) => setInputDeletePass(e.target.value)}
-                className="bg-white border-2 border-red-200 rounded-xl px-4 py-2 flex-1 text-sm font-bold outline-none focus:border-red-500"
-              />
+              <input type="password" placeholder="取消用パスワードを入力" value={inputDeletePass} onChange={(e) => setInputDeletePass(e.target.value)} className="bg-white border-2 border-red-200 rounded-xl px-4 py-2 flex-1 text-sm font-bold outline-none focus:border-red-500" />
             </div>
           )}
-
           {filteredResults.length > 0 ? (
             filteredResults.sort((a,b) => a.date.localeCompare(b.date)).map(res => (
               <div key={res.id} className="bg-white p-6 rounded-3xl border-2 border-gray-50 shadow-md flex justify-between items-center group hover:border-red-100 transition-all">
                 <div className="space-y-1">
                   <div className="font-black text-lg text-gray-900">{res.date} <span className="text-red-500 ml-2">({res.startTime}-{res.endTime})</span></div>
                   <div className="text-xs font-bold text-gray-500">{res.place} {res.courts ? `(${res.courts.join('')})` : ''} | {res.name}</div>
-                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                    <span>{res.status === 'approved' ? '承認済み' : '承認待ち'}</span>
-                    {res.isRecurring && <span className="bg-indigo-50 text-indigo-500 px-1.5 rounded-sm lowercase text-[8px]">Recurring</span>}
-                  </div>
                 </div>
-                <button 
-                  onClick={() => handleCancel(res)}
-                  className="bg-red-50 text-red-500 p-4 rounded-2xl hover:bg-red-500 hover:text-white transition-all shadow-sm"
-                >
+                <button onClick={() => handleCancel(res)} className="bg-red-50 text-red-500 p-4 rounded-2xl hover:bg-red-500 hover:text-white transition-all shadow-sm">
                   <Trash2 className="h-6 w-6" />
                 </button>
               </div>
@@ -908,45 +844,22 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
   const [closedEnd, setClosedEnd] = useState('');
   const [closedReason, setClosedReason] = useState('');
 
-  const updateStatus = async (id, newStatus) => {
-    try {
-      await updateDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', id), { status: newStatus });
-      onStatusUpdate();
-    } catch (err) { alert("更新失敗"); }
-  };
-
   const deleteReservation = async (id) => {
-    if (window.confirm('管理者としてこの予約を却下・削除しますか？（利用者のパスワードは不要です）')) {
+    if (window.confirm('管理者権限でこの予約を削除しますか？')) {
       await deleteDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', id));
       onStatusUpdate();
     }
   };
 
   const launchEmailToReservedUsers = (targetDates) => {
-    const reservedUsersInPeriod = reservations.filter(r => 
-      targetDates.includes(r.date) && r.email
-    );
+    const reservedUsersInPeriod = reservations.filter(r => targetDates.includes(r.date) && r.email);
     if (reservedUsersInPeriod.length === 0) return;
     const uniqueEmails = [...new Set(reservedUsersInPeriod.map(u => u.email))];
     const toField = uniqueEmails.join(',');
-    const periodDisplay = targetDates.length > 1 
-      ? `${targetDates[0]} 〜 ${targetDates[targetDates.length - 1]}`
-      : targetDates[0];
+    const periodDisplay = targetDates.length > 1 ? `${targetDates[0]} 〜 ${targetDates[targetDates.length - 1]}` : targetDates[0];
     const subject = encodeURIComponent("【重要】KAITEKI体育館 施設休館に伴う予約キャンセルのお知らせ");
-    const body = encodeURIComponent(
-      `予約責任者様\n\n` +
-      `いつもKAITEKI体育館をご利用いただきありがとうございます。\n` +
-      `管理担当より、施設休館に伴う予約キャンセルのお願いを申し上げます。\n\n` +
-      `以下の期間、施設メンテナンス等のため休館とさせていただくことになりました。\n` +
-      `該当期間にご予約いただいておりました皆様には大変ご迷惑をおかけいたしますが、\n` +
-      `システム上の予約を取り消しさせていただきますので、何卒ご了承いただけますようお願い申し上げます。\n\n` +
-      `【休館期間】\n${periodDisplay}\n` +
-      `${closedReason ? `【理由】\n${closedReason}\n` : ''}\n` +
-      `※すでにご予約済みの方へ一斉に配信しております。\n` +
-      `本件に関するお問い合わせは管理担当までお願いいたします。\n`
-    );
-    const mailtoLink = `mailto:${toField}?cc=${ADMIN_CC_EMAIL}&subject=${subject}&body=${body}`;
-    window.location.href = mailtoLink;
+    const body = encodeURIComponent(`予約責任者様\n\n施設休館に伴う予約取り消しのお知らせです。\n\n【休館期間】\n${periodDisplay}\n${closedReason ? `【理由】\n${closedReason}\n` : ''}\n本件に関するお問い合わせは管理担当までお願いいたします。\n`);
+    window.location.href = `mailto:${toField}?cc=${ADMIN_CC_EMAIL}&subject=${subject}&body=${body}`;
   };
 
   const addClosedPeriod = async (e) => {
@@ -962,27 +875,18 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
         targetDates.push(formatDateStr(current));
       }
     }
-    if (targetDates.length > 31) {
-      return alert("一度に設定できる休館日は最大31日間です。");
-    }
     try {
       const batch = writeBatch(db);
       const closedRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'closed_days');
       targetDates.forEach(d => {
         if (!closedDays.some(cd => cd.date === d)) {
           const newDocRef = doc(closedRef);
-          batch.set(newDocRef, {
-            date: d,
-            reason: closedReason,
-            createdAt: new Date().toISOString()
-          });
+          batch.set(newDocRef, { date: d, reason: closedReason, createdAt: new Date().toISOString() });
         }
       });
       await batch.commit();
       launchEmailToReservedUsers(targetDates);
-      setClosedStart('');
-      setClosedEnd('');
-      setClosedReason('');
+      setClosedStart(''); setClosedEnd(''); setClosedReason('');
       onStatusUpdate();
     } catch (err) { alert("保存失敗"); }
   };
@@ -995,25 +899,21 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
   };
 
   const exportToCSV = () => {
-    const headers = ["利用日", "開始", "終了", "場所", "コート", "団体名", "代表者", "使用人数", "電話番号", "ステータス"];
+    const headers = ["利用日", "開始", "終了", "場所", "コート", "団体名", "代表者", "使用人数", "電話番号"];
     const rows = reservations.map(r => [
       r.date, r.startTime, r.endTime, r.place, 
       r.courts ? r.courts.join('') : '-',
-      r.name, r.repName, r.userCount || '-', r.phone,
-      r.status === 'approved' ? '承認済' : '申請中'
+      r.name, r.repName, r.userCount || '-', r.phone
     ]);
     const csvContent = "\uFEFF" + [headers, ...rows].map(e => e.join(",")).join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.setAttribute("download", `kaiteki_gym_reservations_${formatDateStr(new Date())}.csv`);
-    document.body.appendChild(link);
+    link.setAttribute("download", `kaiteki_gym_reservations.csv`);
     link.click();
-    document.body.removeChild(link);
   };
 
-  const pending = reservations.filter(r => r.status === 'pending').sort((a,b)=>a.date.localeCompare(b.date));
-  const approved = reservations.filter(r => r.status === 'approved').sort((a,b)=>a.date.localeCompare(b.date));
+  const sortedReservations = [...reservations].sort((a,b)=>a.date.localeCompare(b.date));
 
   if (showPrintView) {
     return <WeeklyPrintView reservations={reservations} closedDays={closedDays} weekStartStr={printWeekStart} onBack={() => setShowPrintView(false)} />;
@@ -1026,59 +926,37 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
           <h2 className="text-3xl font-black flex items-center text-blue-950 tracking-tight">
             <ShieldCheck className="mr-3 h-10 w-10 text-blue-600"/> 管理者メニュー
           </h2>
-          <p className="text-xs font-bold text-gray-500 mt-1">予約の承認とデータの出力管理を行います</p>
+          <p className="text-xs font-bold text-gray-500 mt-1">予約管理とデータの出力を行います</p>
         </div>
-        <div className="flex space-x-2">
-          <button onClick={exportToCSV} className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm hover:bg-green-700 shadow-lg active:scale-95 transition-all">
-            <Download className="h-4 w-4" />
-            <span>CSV出力(Excel用)</span>
-          </button>
-        </div>
+        <button onClick={exportToCSV} className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm hover:bg-green-700 shadow-lg active:scale-95 transition-all">
+          <Download className="h-4 w-4" /><span>CSV出力(Excel用)</span>
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="bg-white p-6 rounded-[2rem] border-2 border-blue-50 shadow-xl space-y-4 h-fit">
           <h3 className="font-bold text-lg flex items-center text-blue-900"><Printer className="h-5 w-5 mr-2" /> 週間予定表の作成 (A3印刷用)</h3>
           <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center space-x-2">
-              <label className="text-xs font-bold text-gray-500">開始日:</label>
-              <input type="date" value={printWeekStart} onChange={(e)=>setPrintWeekStart(e.target.value)} className="border p-2 rounded-xl text-sm font-bold" />
-            </div>
+            <input type="date" value={printWeekStart} onChange={(e)=>setPrintWeekStart(e.target.value)} className="border p-2 rounded-xl text-sm font-bold" />
             <button onClick={()=>setShowPrintView(true)} className="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold text-sm hover:bg-blue-700 shadow flex items-center space-x-2">
-              <Printer className="h-4 w-4" />
-              <span>印刷プレビュー</span>
+              <Printer className="h-4 w-4" /><span>印刷プレビュー</span>
             </button>
           </div>
         </div>
 
         <div className="bg-white p-6 rounded-[2rem] border-2 border-red-50 shadow-xl space-y-4">
-          <div className="flex justify-between items-center">
-            <h3 className="font-bold text-lg flex items-center text-red-900"><Ban className="h-5 w-5 mr-2" /> 休館日の期間設定</h3>
-            <div className="flex items-center text-[10px] text-gray-400 font-bold bg-gray-50 px-2 py-1 rounded-full">
-              <Mail className="w-3 h-3 mr-1" /> 予約者へ自動通知連携
-            </div>
-          </div>
+          <h3 className="font-bold text-lg flex items-center text-red-900"><Ban className="h-5 w-5 mr-2" /> 休館日の期間設定</h3>
           <form onSubmit={addClosedPeriod} className="space-y-4">
             <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-gray-400 px-1 uppercase tracking-widest">開始日</label>
-                <input type="date" required value={closedStart} onChange={(e)=>setClosedStart(e.target.value)} className="w-full border p-2 rounded-xl text-sm font-bold" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-gray-400 px-1 uppercase tracking-widest">終了日（任意）</label>
-                <input type="date" value={closedEnd} onChange={(e)=>setClosedEnd(e.target.value)} className="w-full border p-2 rounded-xl text-sm font-bold" />
-              </div>
+              <input type="date" required value={closedStart} onChange={(e)=>setClosedStart(e.target.value)} className="w-full border p-2 rounded-xl text-sm font-bold" />
+              <input type="date" value={closedEnd} onChange={(e)=>setClosedEnd(e.target.value)} className="w-full border p-2 rounded-xl text-sm font-bold" />
             </div>
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-gray-400 px-1 uppercase tracking-widest">理由（任意）</label>
-              <input type="text" placeholder="お盆休み、メンテナンスなど" value={closedReason} onChange={(e)=>setClosedReason(e.target.value)} className="w-full border p-2 rounded-xl text-sm font-bold" />
-            </div>
-            <button type="submit" className="w-full bg-red-600 text-white py-3 rounded-xl font-bold text-sm hover:bg-red-700 shadow-lg shadow-red-100 transition-all active:scale-95">休館日をまとめて登録 & メール作成</button>
+            <input type="text" placeholder="理由（任意）" value={closedReason} onChange={(e)=>setClosedReason(e.target.value)} className="w-full border p-2 rounded-xl text-sm font-bold" />
+            <button type="submit" className="w-full bg-red-600 text-white py-3 rounded-xl font-bold text-sm hover:bg-red-700 shadow-lg transition-all active:scale-95">休館日を登録 & 連絡メール作成</button>
           </form>
           <div className="pt-4 border-t border-red-50">
-             <p className="text-[10px] font-bold text-gray-400 px-1 mb-2 uppercase tracking-widest">設定済みの休館日</p>
              <div className="max-h-32 overflow-y-auto space-y-2 pr-1">
-              {closedDays.length === 0 ? <p className="text-[10px] text-gray-400 font-bold italic">設定はありません</p> : closedDays.sort((a,b)=>a.date.localeCompare(b.date)).map(cd => (
+              {closedDays.sort((a,b)=>a.date.localeCompare(b.date)).map(cd => (
                 <div key={cd.id} className="flex justify-between items-center bg-red-50 p-2 rounded-lg border border-red-100">
                   <span className="text-[11px] font-bold text-red-700">{cd.date} <span className="text-gray-400 font-normal ml-2">{cd.reason}</span></span>
                   <button onClick={()=>removeClosedDay(cd.id)} className="text-red-300 hover:text-red-600 p-1"><X className="h-4 w-4"/></button>
@@ -1090,47 +968,22 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
       </div>
       
       <section>
-        <h3 className="font-bold text-xl text-yellow-700 mb-6 flex items-center bg-yellow-50 px-5 py-2 rounded-2xl w-fit border border-yellow-200">
-          <Clock className="h-6 w-6 mr-3 animate-pulse"/> 未承認の申請 ({pending.length})
+        <h3 className="font-bold text-xl text-blue-900 mb-6 border-b-2 border-blue-50 pb-2 flex items-center">
+           <Calendar className="mr-2 h-6 w-6" /> 全予約リスト（{reservations.length}件）
         </h3>
         <div className="space-y-4">
-          {pending.length === 0 ? <p className="text-center text-gray-300 py-10 font-bold border-2 border-dashed rounded-3xl">新しい申請はありません</p> : pending.map(res => (
-            <div key={res.id} className="bg-white p-6 rounded-3xl border shadow-md flex flex-col md:flex-row justify-between gap-6 hover:border-yellow-200">
+          {sortedReservations.length === 0 ? <p className="text-center text-gray-300 py-10 font-bold">予約データはありません</p> : sortedReservations.map(res => (
+            <div key={res.id} className="bg-white p-6 rounded-3xl border shadow-md flex flex-col md:flex-row justify-between gap-6">
               <div className="flex-1 space-y-1">
                 <div className="font-black text-xl">{res.date} <span className="text-blue-600 ml-2">({res.startTime}-{res.endTime})</span></div>
                 <div className="text-sm font-bold text-gray-600">{res.place} {res.courts ? `(${res.courts.join('')})` : ''} | {res.name}</div>
                 <div className="text-xs text-gray-400 italic flex items-center gap-4">
                   <span>目的: {res.purpose}</span>
-                  <span className="flex items-center gap-1"><UserCheck className="h-3 w-3" /> 使用人数: {res.userCount}名</span>
+                  <span className="flex items-center gap-1"><UserCheck className="h-3 w-3" /> {res.userCount}名</span>
                   <span>代表: {res.repName} ({res.phone})</span>
                 </div>
-                {res.isRecurring && <div className="text-[10px] text-indigo-500 font-bold">※定期予約の一括申請</div>}
               </div>
-              <div className="flex items-center space-x-2">
-                <button onClick={()=>deleteReservation(res.id)} className="px-4 py-2 text-red-500 font-bold text-xs hover:bg-red-50 rounded-xl">却下・削除</button>
-                <button onClick={()=>updateStatus(res.id, 'approved')} className="bg-green-600 text-white px-8 py-3 rounded-full font-bold shadow-lg flex items-center space-x-2 active:scale-95">
-                  <Check className="h-4 w-4" />
-                  <span>承認する</span>
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section>
-        <h3 className="font-bold text-xl text-blue-900 mb-6 border-b-2 border-blue-50 pb-2">承認済み予約</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {approved.map(res => (
-            <div key={res.id} className="bg-white p-4 rounded-2xl border shadow-sm flex justify-between items-center group">
-              <div className="truncate pr-4 border-r mr-2">
-                <div className="font-bold text-sm text-gray-800 truncate">{res.date} ({res.startTime})</div>
-                <div className="text-[10px] text-gray-400 font-bold truncate">{res.place} | {res.name} ({res.userCount || '-'}名)</div>
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                <button onClick={()=>updateStatus(res.id, 'pending')} className="text-[8px] text-gray-400 hover:text-blue-600 font-bold transition-all">未承認に戻す</button>
-                <button onClick={()=>deleteReservation(res.id)} className="text-[8px] text-red-300 hover:text-red-600 font-bold transition-all">予約削除</button>
-              </div>
+              <button onClick={()=>deleteReservation(res.id)} className="px-6 py-2 bg-red-50 text-red-600 font-bold text-xs hover:bg-red-100 rounded-xl transition-colors">削除</button>
             </div>
           ))}
         </div>
@@ -1156,16 +1009,16 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
         <div className="flex items-center space-x-3">
           <Printer className="h-8 w-8 text-blue-600" />
           <div>
-            <h3 className="text-xl font-bold">週間予定表 A3印刷プレビュー</h3>
-            <p className="text-xs text-gray-500 font-bold">設定: A3 / 横向き / 倍率100% を推奨</p>
+            <h3 className="text-xl font-bold">週間予定表 印刷プレビュー</h3>
+            <p className="text-xs text-gray-500 font-bold">A3 / 横向き設定を推奨</p>
           </div>
         </div>
         <div className="flex space-x-3">
           <button onClick={onBack} className="px-6 py-2 font-bold text-gray-500 border rounded-xl hover:bg-gray-50">管理画面に戻る</button>
-          <button onClick={() => window.print()} className="bg-blue-600 text-white px-8 py-2.5 rounded-xl font-bold shadow-lg hover:bg-blue-700 active:scale-95 transition-all">ブラウザの印刷機能を開く</button>
+          <button onClick={() => window.print()} className="bg-blue-600 text-white px-8 py-2.5 rounded-xl font-bold shadow-lg hover:bg-blue-700 transition-all">印刷する</button>
         </div>
       </div>
-      <div className="bg-white p-2 border-2 border-black min-h-[800px] shadow-sm font-sans text-xs">
+      <div className="bg-white p-2 border-2 border-black min-h-[800px] font-sans text-xs">
         <div className="text-center mb-4">
           <h2 className="text-2xl font-bold border-b-2 border-black inline-block px-10 pb-1 uppercase tracking-widest">KAITEKI体育館 週間利用予定表</h2>
           <p className="text-sm font-bold mt-2">期間: {weekDays[0]} 〜 {weekDays[6]}</p>
@@ -1195,15 +1048,11 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                 {weekDays.map(d => {
                   const isClosed = closedDateStrs.includes(d);
                   const dayCourts = reservations
-                    .filter(r => r.date === d && r.place.includes('体育館') && r.courts && r.courts.includes(c) && r.status === 'approved')
+                    .filter(r => r.date === d && r.place.includes('体育館') && r.courts && r.courts.includes(c))
                     .sort((a,b)=>a.startTime.localeCompare(b.startTime));
                   return (
                     <td key={d} className={`border-2 border-black p-1 align-top relative ${isClosed ? 'bg-gray-100' : ''}`}>
-                      {isClosed ? (
-                        <div className="flex items-center justify-center h-full">
-                          <Ban className="w-8 h-8 text-gray-300" />
-                        </div>
-                      ) : (
+                      {isClosed ? <div className="flex items-center justify-center h-full"><Ban className="w-8 h-8 text-gray-300" /></div> : (
                         <div className="space-y-1">
                           {dayCourts.map(res => (
                             <div key={res.id} className="border border-gray-300 p-1 rounded bg-gray-50/50 leading-tight">
@@ -1223,13 +1072,11 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
               {weekDays.map(d => {
                   const isClosed = closedDateStrs.includes(d);
                   const rooms = reservations
-                    .filter(r => r.date === d && r.place.includes('多目的室') && r.status === 'approved')
+                    .filter(r => r.date === d && r.place.includes('多目的室'))
                     .sort((a,b)=>a.startTime.localeCompare(b.startTime));
                   return (
                     <td key={d} className={`border-2 border-black p-1 align-top ${isClosed ? 'bg-gray-100' : ''}`}>
-                      {isClosed ? (
-                        <div className="flex items-center justify-center h-full text-gray-300 font-bold uppercase tracking-widest text-[8px]">Closed</div>
-                      ) : (
+                      {isClosed ? <div className="flex items-center justify-center h-full text-gray-300 font-bold uppercase tracking-widest text-[8px]">Closed</div> : (
                         <div className="space-y-1">
                           {rooms.map(res => (
                             <div key={res.id} className="border border-gray-300 p-1 rounded bg-gray-50/50 leading-tight">
@@ -1246,7 +1093,6 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
           </tbody>
         </table>
         <div className="mt-4 flex justify-between items-end text-[10px] font-bold text-gray-400">
-          <div>※管理者承認済みの予約のみ表示しています。</div>
           <div>出力日時: {new Date().toLocaleString()}</div>
         </div>
       </div>
@@ -1268,12 +1114,10 @@ function RulesView() {
             <h3 className="flex items-center text-blue-800 text-2xl mb-8 border-l-[10px] border-blue-700 pl-6 tracking-tight font-black">① 利用時間・休館</h3>
             <div className="bg-gray-50 p-8 rounded-[3rem] space-y-8 shadow-inner border-2 border-white leading-relaxed">
               <div className="space-y-4">
-                <p className="text-xs text-gray-400 uppercase tracking-widest border-b pb-1 inline-block">Schedule</p>
                 <div className="flex justify-between items-center text-xl"><span>平日</span><span className="bg-gray-900 text-white px-5 py-1.5 rounded-2xl shadow-xl font-mono">8:30 - 21:00</span></div>
                 <div className="flex justify-between items-center text-xl"><span>休日</span><span className="bg-gray-900 text-white px-5 py-1.5 rounded-2xl shadow-xl font-mono">8:30 - 17:00</span></div>
               </div>
               <div className="pt-8 border-t-2 border-gray-100 space-y-4">
-                <p className="text-xs text-red-500 uppercase tracking-widest border-b border-red-100 pb-1 inline-block">Closed</p>
                 <p className="text-2xl text-red-600 font-black tracking-tighter leading-none">毎月 第１・第３日曜日</p>
                 <p className="text-[11px] text-gray-400 mt-2 leading-relaxed font-bold">※お盆、正月、GW、会社カレンダー準拠。</p>
               </div>
@@ -1301,7 +1145,7 @@ function RulesView() {
           <h3 className="flex items-center text-blue-800 text-2xl mb-8 border-l-[10px] border-blue-700 pl-6 tracking-tight font-black">③ 遵守事項</h3>
           <ul className="space-y-6 font-bold text-gray-700">
             {[
-              { t: "ルール厳守", c: "予約時に申請した人数を大きく超える利用は避けてください。" },
+              { t: "予約確定", c: "予約は即時に確定されます。変更がある場合は速やかに取り消しを行ってください。" },
               { t: "飲食禁止", c: "アリーナ内は食事厳禁。食事は2階休憩スペースか多目的室で。" },
               { t: "清掃徹底", c: "終了後は用具を戻し、必ずモップ掛けを行ってください。ゴミは各自持ち帰り。" },
               { t: "駐車場", c: "指定場所のみ駐車可。路上駐車禁止。路面表示、一方通行を遵守。" },
