@@ -25,10 +25,8 @@ const safeAppId = String(rawAppId).replace(/\//g, '-');
 const PORTAL_PASSWORD = "kaiteki-user";
 const ADMIN_PASSWORD = "admin123";
 
-// 管理用CCメールアドレス
 const ADMIN_CC_EMAIL = "MCJP-DG-RIX_TOYAMA_TAIIKUKAN@mchcgr.com";
 
-// 備品リスト
 const equipmentForAll = [
   'バドミントン用器具（ポール・ネット）',
   'ビーチボールバレー用器具（ポール・ネット・審判台）',
@@ -43,7 +41,6 @@ const equipmentForEmployeesOnly = [
   '卓球ラケット'
 ];
 
-// ユーティリティ
 const formatDateStr = (date) => {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -59,6 +56,53 @@ const isTimeOverlapping = (start1, end1, start2, end2) => {
   return start1 < end2 && start2 < end1;
 };
 
+// --- サブコンポーネント ---
+
+function TabButton({ icon, label, isActive, onClick }) {
+  return (
+    <button 
+      onClick={onClick} 
+      className={`flex items-center space-x-1.5 px-4 py-2 rounded-md text-sm font-bold transition-all whitespace-nowrap ${isActive ? 'bg-white text-blue-900 shadow-md' : 'text-blue-100 hover:bg-blue-700 hover:text-white'}`}
+    >
+      {React.cloneElement(icon, { className: 'h-4 w-4' })}
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function CourtButton({ label, active, occupied, onClick }) {
+  return (
+    <button 
+      type="button"
+      disabled={occupied}
+      onClick={onClick}
+      className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl font-bold text-xl transition-all shadow flex items-center justify-center relative
+        ${occupied ? 'bg-red-50 text-red-300 border-2 border-red-100 cursor-not-allowed opacity-60' : 
+          active ? 'bg-blue-600 text-white shadow-blue-400/40 border-2 border-blue-400 scale-105' : 'bg-white text-gray-500 border-2 border-gray-100 hover:border-blue-400 hover:text-blue-500'}
+      `}
+    >
+      {label}
+      {occupied && <X className="absolute h-3 w-3 text-red-300 bottom-1 right-1" />}
+    </button>
+  );
+}
+
+function InputField({ label, value, onChange, placeholder, type = "text" }) {
+  return (
+    <div className="space-y-1">
+      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3">{label}</label>
+      <input 
+        type={type} 
+        required 
+        placeholder={placeholder} 
+        value={value} 
+        onChange={(e)=>onChange(e.target.value)} 
+        className="bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white p-3.5 rounded-2xl w-full text-base font-bold outline-none transition-all shadow-inner" 
+      />
+    </div>
+  );
+}
+
 // --- メインコンポーネント ---
 export default function App() {
   const [activeTab, setActiveTab] = useState('calendar');
@@ -72,7 +116,7 @@ export default function App() {
   
   const [user, setUser] = useState(null);
   const [reservations, setReservations] = useState([]);
-  const [closedDays, setClosedDays] = useState([]); // 休館日データ
+  const [closedDays, setClosedDays] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -174,11 +218,6 @@ export default function App() {
               システムに入る
             </button>
           </form>
-          <div className="pt-4">
-            <p className="text-[10px] text-gray-400 leading-relaxed font-bold italic">
-              ※このシステムは三菱ケミカル・ダイヤリックス関係者専用です。<br/>パスワードが不明な場合は各担当者へご確認ください。
-            </p>
-          </div>
         </div>
       </div>
     );
@@ -186,18 +225,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
-      <style>{`
-        @media print {
-          header, nav, .no-print { display: none !important; }
-          main { margin: 0 !important; padding: 0 !important; width: 100% !important; }
-          .print-only { display: block !important; }
-          @page { size: A3 landscape; margin: 10mm; }
-        }
-        .print-only { display: none; }
-        .animate-spin-slow { animation: spin 3s linear infinite; }
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-      `}</style>
-
       <header className="bg-blue-800 text-white shadow-md sticky top-0 z-40 no-print">
         <div className="max-w-6xl mx-auto px-4 py-3 flex flex-col sm:flex-row justify-between items-center">
           <div className="flex items-center space-x-3 mb-2 sm:mb-0">
@@ -284,16 +311,6 @@ export default function App() {
   );
 }
 
-function TabButton({ icon, label, isActive, onClick }) {
-  return (
-    <button onClick={onClick} className={`flex items-center space-x-1.5 px-4 py-2 rounded-md text-sm font-bold transition-all whitespace-nowrap ${isActive ? 'bg-white text-blue-900 shadow-md' : 'text-blue-100 hover:bg-blue-700 hover:text-white'}`}>
-      {React.cloneElement(icon, { className: 'h-4 w-4' })}
-      <span>{label}</span>
-    </button>
-  );
-}
-
-// 1. カレンダービュー
 function CalendarView({ reservations, closedDays, onReserveClick }) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDateStr, setSelectedDateStr] = useState(formatDateStr(new Date()));
@@ -383,9 +400,11 @@ function CalendarView({ reservations, closedDays, onReserveClick }) {
                   <div key={res.id} className="border-l-8 border-blue-500 p-4 rounded-xl shadow bg-white transition-all hover:scale-[1.02]">
                     <div className="text-base font-bold text-gray-900 mb-1 tracking-tight">{res.startTime || '--:--'} - {res.endTime || '--:--'}</div>
                     <div className="text-xs font-bold text-blue-700 my-1 bg-blue-50 px-2 py-0.5 rounded inline-block">
-                      {res.place} {res.courts ? `(${Array.isArray(res.courts) ? res.courts.join('') : res.courts})` : ''}
+                      {res.place} {res.courts ? `(${Array.isArray(res.courts) ? res.courts.join(', ') : res.courts})` : ''}
                     </div>
-                    <div className="text-[10px] font-bold text-gray-500 border-t pt-2 mt-2 truncate">団体: <span className="text-gray-700">{res.name}</span></div>
+                    <div className="text-[10px] font-bold text-gray-500 border-t pt-2 mt-2 truncate">
+                      団体: <span className="text-gray-700">{res.name}</span>
+                    </div>
                     <div className="mt-2 text-[9px] font-black px-3 py-0.5 inline-block rounded-full shadow-sm uppercase bg-blue-600 text-white">
                       予約確定済
                     </div>
@@ -414,7 +433,6 @@ function CalendarView({ reservations, closedDays, onReserveClick }) {
   );
 }
 
-// 2. 予約フォーム
 function ReservationForm({ initialDate, reservations, closedDays, user, onSuccess }) {
   const [userType, setUserType] = useState('external');
   const [selectedDate, setSelectedDate] = useState(initialDate || '');
@@ -540,7 +558,7 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
           place: selectedFacilities.join(', '), 
           courts: selectedFacilities.includes('体育館') ? selectedCourts : null,
           equipment, 
-          status: 'approved', // 初めから承認済み
+          status: 'approved',
           createdAt: new Date().toISOString(), 
           userId: user.uid,
           isRecurring: isRecurring
@@ -729,33 +747,6 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
   );
 }
 
-function InputField({ label, value, onChange, placeholder, type = "text" }) {
-  return (
-    <div className="space-y-1">
-      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3">{label}</label>
-      <input type={type} required placeholder={placeholder} value={value} onChange={(e)=>onChange(e.target.value)} className="bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white p-3.5 rounded-2xl w-full text-base font-bold outline-none transition-all shadow-inner" />
-    </div>
-  );
-}
-
-function CourtButton({ label, active, occupied, onClick }) {
-  return (
-    <button 
-      type="button"
-      disabled={occupied}
-      onClick={onClick}
-      className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl font-bold text-xl transition-all shadow flex items-center justify-center relative
-        ${occupied ? 'bg-red-50 text-red-300 border-2 border-red-100 cursor-not-allowed opacity-60' : 
-          active ? 'bg-blue-600 text-white shadow-blue-400/40 border-2 border-blue-400 scale-105' : 'bg-white text-gray-500 border-2 border-gray-100 hover:border-blue-400 hover:text-blue-500'}
-      `}
-    >
-      {label}
-      {occupied && <X className="absolute h-3 w-3 text-red-300 bottom-1 right-1" />}
-    </button>
-  );
-}
-
-// 3. 予約取消画面
 function CancelView({ reservations, onSuccess }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredResults, setFilteredResults] = useState([]);
@@ -816,7 +807,8 @@ function CancelView({ reservations, onSuccess }) {
               <div key={res.id} className="bg-white p-6 rounded-3xl border-2 border-gray-50 shadow-md flex justify-between items-center group hover:border-red-100 transition-all">
                 <div className="space-y-1">
                   <div className="font-black text-lg text-gray-900">{res.date} <span className="text-red-500 ml-2">({res.startTime}-{res.endTime})</span></div>
-                  <div className="text-xs font-bold text-gray-500">{res.place} {res.courts ? `(${res.courts.join('')})` : ''} | {res.name}</div>
+                  <div className="text-xs font-bold text-gray-500">{res.place} {res.courts ? `(${res.courts.join(', ')})` : ''} | {res.name}</div>
+                  <div className="text-[10px] text-red-400 font-bold">責任者: {res.repName}</div>
                 </div>
                 <button onClick={() => handleCancel(res)} className="bg-red-50 text-red-500 p-4 rounded-2xl hover:bg-red-500 hover:text-white transition-all shadow-sm">
                   <Trash2 className="h-6 w-6" />
@@ -835,7 +827,6 @@ function CancelView({ reservations, onSuccess }) {
   );
 }
 
-// 4. 管理者ダッシュボード
 function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
   const [printWeekStart, setPrintWeekStart] = useState(formatDateStr(new Date()));
   const [showPrintView, setShowPrintView] = useState(false);
@@ -902,15 +893,16 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
     const headers = ["利用日", "開始", "終了", "場所", "コート", "団体名", "代表者", "使用人数", "電話番号"];
     const rows = reservations.map(r => [
       r.date, r.startTime, r.endTime, r.place, 
-      r.courts ? r.courts.join('') : '-',
+      r.courts ? r.courts.join(', ') : '-',
       r.name, r.repName, r.userCount || '-', r.phone
     ]);
     const csvContent = "\uFEFF" + [headers, ...rows].map(e => e.join(",")).join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
+    const link = document.body.appendChild(document.createElement("a"));
     link.href = URL.createObjectURL(blob);
-    link.setAttribute("download", `kaiteki_gym_reservations.csv`);
+    link.download = `kaiteki_gym_reservations.csv`;
     link.click();
+    document.body.removeChild(link);
   };
 
   const sortedReservations = [...reservations].sort((a,b)=>a.date.localeCompare(b.date));
@@ -976,7 +968,7 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
             <div key={res.id} className="bg-white p-6 rounded-3xl border shadow-md flex flex-col md:flex-row justify-between gap-6">
               <div className="flex-1 space-y-1">
                 <div className="font-black text-xl">{res.date} <span className="text-blue-600 ml-2">({res.startTime}-{res.endTime})</span></div>
-                <div className="text-sm font-bold text-gray-600">{res.place} {res.courts ? `(${res.courts.join('')})` : ''} | {res.name}</div>
+                <div className="text-sm font-bold text-gray-600">{res.place} {res.courts ? `(${res.courts.join(', ')})` : ''} | {res.name}</div>
                 <div className="text-xs text-gray-400 italic flex items-center gap-4">
                   <span>目的: {res.purpose}</span>
                   <span className="flex items-center gap-1"><UserCheck className="h-3 w-3" /> {res.userCount}名</span>
@@ -992,7 +984,6 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
   );
 }
 
-// 印刷用週間ビュー
 function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
   const weekStart = new Date(weekStartStr);
   const weekDays = Array.from({ length: 7 }, (_, i) => {
@@ -1100,7 +1091,6 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
   );
 }
 
-// 5. 利用ルール
 function RulesView() {
   return (
     <div className="max-w-4xl mx-auto bg-white p-10 sm:p-16 rounded-[3.5rem] border shadow-2xl animate-in fade-in zoom-in-95 duration-500">
