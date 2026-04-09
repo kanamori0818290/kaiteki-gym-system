@@ -422,8 +422,10 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
   const [userType, setUserType] = useState('external');
   const [selectedDate, setSelectedDate] = useState(initialDate || '');
   const [formData, setFormData] = useState({ 
-    name: '', repName: '', email: '', phone: '', startTime: '', endTime: '', place: '', purpose: '', deletePass: '', userCount: ''
+    name: '', repName: '', email: '', phone: '', startTime: '', endTime: '', purpose: '', deletePass: '', userCount: ''
   });
+  // 施設選択を配列で管理
+  const [selectedFacilities, setSelectedFacilities] = useState(['体育館']);
   const [selectedCourts, setSelectedCourts] = useState([]);
   const [equipment, setEquipment] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -465,14 +467,24 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
   const hasClosedDayInTargets = partitionedDates.closed.length > 0;
 
   const getOccupiedCourts = (date) => {
-    if (!date || !formData.startTime || !formData.endTime || formData.place !== '体育館') return [];
+    if (!date || !formData.startTime || !formData.endTime || !selectedFacilities.includes('体育館')) return [];
     return reservations
-      .filter(r => r.date === date && r.place === '体育館' && r.courts)
+      .filter(r => r.date === date && r.place.includes('体育館') && r.courts)
       .filter(r => isTimeOverlapping(formData.startTime, formData.endTime, r.startTime, r.endTime))
       .flatMap(r => Array.isArray(r.courts) ? r.courts : []);
   };
 
   const occupiedCourts = getOccupiedCourts(selectedDate);
+
+  const toggleFacility = (facility) => {
+    setSelectedFacilities(prev => 
+      prev.includes(facility) ? prev.filter(f => f !== facility) : [...prev, facility]
+    );
+    // 体育館を外した場合はコート選択もクリア
+    if (facility === '体育館' && selectedFacilities.includes('体育館')) {
+      setSelectedCourts([]);
+    }
+  };
 
   const toggleCourt = (court) => {
     if (occupiedCourts.includes(court)) return;
@@ -493,6 +505,7 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!user) return alert("認証エラーです");
+    if (selectedFacilities.length === 0) return alert("利用する施設を選択してください。");
     if (!formData.deletePass) return alert("取り消し用パスワードを設定してください。");
     
     if (!isRecurring && isSelectedDateClosed) return alert("休館日のため予約できません。");
@@ -501,22 +514,26 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
       return alert("選択された期間の全ての日付が休館日のため、予約を送信できません。");
     }
 
-    if (formData.place === '体育館' && selectedCourts.length === 0) return alert("コート(A-F)を選んでください。");
+    if (selectedFacilities.includes('体育館') && selectedCourts.length === 0) return alert("コート(A-F)を選んでください。");
     
     if (targetDates.length > 20) {
       return alert("定期予約は最大20回分までまとめて申請可能です。期間を短くしてください。");
     }
 
+    // 全日程の重複チェック
     for (const d of partitionedDates.valid) {
-      if (formData.place === '体育館') {
+      // 体育館の重複チェック
+      if (selectedFacilities.includes('体育館')) {
         const occ = getOccupiedCourts(d);
         const conflict = selectedCourts.some(c => occ.includes(c));
         if (conflict) {
           return alert(`${d} に指定のコートが既に予約されています。`);
         }
-      } else {
+      }
+      // 多目的室の重複チェック
+      if (selectedFacilities.includes('多目的室')) {
         const roomConflict = reservations.some(r => 
-          r.date === d && r.place === '多目的室' && r.status === 'approved' &&
+          r.date === d && r.place.includes('多目的室') && r.status === 'approved' &&
           isTimeOverlapping(formData.startTime, formData.endTime, r.startTime, r.endTime)
         );
         if (roomConflict) {
@@ -536,7 +553,8 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
           date: d, 
           userType, 
           ...formData, 
-          courts: formData.place === '体育館' ? selectedCourts : null,
+          place: selectedFacilities.join(', '), // カンマ区切りの文字列で保存
+          courts: selectedFacilities.includes('体育館') ? selectedCourts : null,
           equipment, 
           status: 'pending', 
           createdAt: new Date().toISOString(), 
@@ -653,16 +671,20 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
             </div>
 
             <div className="space-y-4 pt-2">
-              <div className="space-y-2 px-2">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">施設 *</label>
-                <select required value={formData.place} onChange={(e)=>setFormData({...formData, place:e.target.value})} className="bg-gray-50 p-4 rounded-2xl w-full text-base font-bold border-2 border-transparent focus:border-blue-500 focus:bg-white outline-none">
-                  <option value="">選択</option>
-                  <option value="体育館">体育館（アリーナ）</option>
-                  <option value="多目的室">多目的室</option>
-                </select>
+              <div className="space-y-3 px-2">
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">利用施設 (複数選択可) *</label>
+                <div className="flex gap-4">
+                  {['体育館', '多目的室'].map(facility => (
+                    <label key={facility} className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all cursor-pointer font-bold text-sm ${selectedFacilities.includes(facility) ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm' : 'border-gray-100 bg-gray-50 text-gray-400'}`}>
+                      <input type="checkbox" checked={selectedFacilities.includes(facility)} onChange={() => toggleFacility(facility)} className="hidden" />
+                      {selectedFacilities.includes(facility) ? <CheckSquare className="h-4 w-4" /> : <div className="h-4 w-4 border-2 border-gray-200 rounded" />}
+                      {facility}
+                    </label>
+                  ))}
+                </div>
               </div>
 
-              {formData.place === '体育館' && (
+              {selectedFacilities.includes('体育館') && (
                 <div className="space-y-4 animate-in zoom-in duration-300 px-2">
                   <label className="text-xs font-bold text-blue-800 flex justify-between px-1">
                     <span>コート選択 (最大3面) *</span>
@@ -1173,7 +1195,7 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                 {weekDays.map(d => {
                   const isClosed = closedDateStrs.includes(d);
                   const dayCourts = reservations
-                    .filter(r => r.date === d && r.courts && r.courts.includes(c) && r.status === 'approved')
+                    .filter(r => r.date === d && r.place.includes('体育館') && r.courts && r.courts.includes(c) && r.status === 'approved')
                     .sort((a,b)=>a.startTime.localeCompare(b.startTime));
                   return (
                     <td key={d} className={`border-2 border-black p-1 align-top relative ${isClosed ? 'bg-gray-100' : ''}`}>
@@ -1201,7 +1223,7 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
               {weekDays.map(d => {
                   const isClosed = closedDateStrs.includes(d);
                   const rooms = reservations
-                    .filter(r => r.date === d && r.place === '多目的室' && r.status === 'approved')
+                    .filter(r => r.date === d && r.place.includes('多目的室') && r.status === 'approved')
                     .sort((a,b)=>a.startTime.localeCompare(b.startTime));
                   return (
                     <td key={d} className={`border-2 border-black p-1 align-top ${isClosed ? 'bg-gray-100' : ''}`}>
