@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban, Mail, Key, UserCheck } from 'lucide-react';
+import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban, Mail, Key, UserCheck, MousePointerClick } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, query, writeBatch } from 'firebase/firestore';
@@ -39,6 +39,27 @@ const equipmentForEmployeesOnly = [
   'バドミントン用品（ラケット、シャトル）',
   '各種ボール（ビーチ、バスケ、ドッジ、バレー、卓球）',
   '卓球ラケット'
+];
+
+// --- タイムライン（スケジュールアシスタント）用の定数 ---
+const TIME_SLOTS = [
+  "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", 
+  "12:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", 
+  "16:30", "17:00", "17:30", "18:00", "18:30", "19:00", "19:30", "20:00", "20:30"
+];
+const END_TIMES = [
+  "09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "12:30",
+  "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30",
+  "17:00", "17:30", "18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00"
+];
+const RESOURCES = [
+  { id: 'E', name: 'コートE (用具側)', type: '体育館' },
+  { id: 'D', name: 'コートD (用具側)', type: '体育館' },
+  { id: 'F', name: 'コートF (用具側)', type: '体育館' },
+  { id: 'A', name: 'コートA (入口側)', type: '体育館' },
+  { id: 'B', name: 'コートB (入口側)', type: '体育館' },
+  { id: 'C', name: 'コートC (入口側)', type: '体育館' },
+  { id: '多目的室', name: '多目的室', type: '多目的室' },
 ];
 
 const formatDateStr = (date) => {
@@ -99,6 +120,156 @@ function InputField({ label, value, onChange, placeholder, type = "text" }) {
         onChange={(e)=>onChange(e.target.value)} 
         className="bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white p-3.5 rounded-2xl w-full text-base font-bold outline-none transition-all shadow-inner" 
       />
+    </div>
+  );
+}
+
+// タイムライングリッドセレクター（Outlookスケジュールアシスタント風）
+function TimeGridSelector({ selectedDate, reservations, currentStartTime, currentEndTime, currentFacilities, currentCourts, onSelectionChange }) {
+  const [dragStart, setDragStart] = useState(null);
+  const [dragCurrent, setDragCurrent] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const occupiedMap = useMemo(() => {
+    const map = {};
+    RESOURCES.forEach((res, rIndex) => {
+      TIME_SLOTS.forEach((t, cIndex) => {
+        const start = t;
+        const end = END_TIMES[cIndex];
+        const isOccupied = reservations.some(r => {
+          if (r.date !== selectedDate) return false;
+          if (!isTimeOverlapping(start, end, r.startTime, r.endTime)) return false;
+          if (res.type === '体育館' && r.place.includes('体育館') && r.courts && r.courts.includes(res.id)) return true;
+          if (res.type === '多目的室' && r.place.includes('多目的室')) return true;
+          return false;
+        });
+        map[`${rIndex}-${cIndex}`] = isOccupied;
+      });
+    });
+    return map;
+  }, [selectedDate, reservations]);
+
+  const dragRect = useMemo(() => {
+    if (!isDragging || !dragStart || !dragCurrent) return null;
+    const minR = Math.min(dragStart.r, dragCurrent.r);
+    const maxR = Math.max(dragStart.r, dragCurrent.r);
+    const minC = Math.min(dragStart.c, dragCurrent.c);
+    const maxC = Math.max(dragStart.c, dragCurrent.c);
+    
+    let conflict = false;
+    for (let r = minR; r <= maxR; r++) {
+      for (let c = minC; c <= maxC; c++) {
+        if (occupiedMap[`${r}-${c}`]) {
+          conflict = true;
+          break;
+        }
+      }
+    }
+    return { minR, maxR, minC, maxC, conflict };
+  }, [isDragging, dragStart, dragCurrent, occupiedMap]);
+
+  const handleMouseDown = (r, c, occupied) => {
+    if (occupied) return;
+    setIsDragging(true);
+    setDragStart({ r, c });
+    setDragCurrent({ r, c });
+  };
+
+  const handleMouseEnter = (r, c) => {
+    if (isDragging) {
+      setDragCurrent({ r, c });
+    }
+  };
+
+  const handleMouseUp = () => {
+    if (isDragging && dragRect && !dragRect.conflict) {
+      const facilities = new Set();
+      const courts = [];
+      for (let r = dragRect.minR; r <= dragRect.maxR; r++) {
+        const res = RESOURCES[r];
+        facilities.add(res.type);
+        if (res.type === '体育館') courts.push(res.id);
+      }
+      
+      // コート数が3を超える場合はエラーを出して選択させない
+      if (courts.length > 3) {
+        alert("最大3面までしか一度に選択できません。");
+      } else {
+        onSelectionChange({
+          startTime: TIME_SLOTS[dragRect.minC],
+          endTime: END_TIMES[dragRect.maxC],
+          facilities: Array.from(facilities),
+          courts: courts
+        });
+      }
+    }
+    setIsDragging(false);
+    setDragStart(null);
+    setDragCurrent(null);
+  };
+
+  return (
+    <div className="overflow-x-auto border-2 border-blue-100 rounded-2xl bg-white shadow-inner select-none relative max-w-full pb-2">
+      <table className="w-full text-xs min-w-[1000px] border-collapse bg-white">
+        <thead>
+          <tr>
+            <th className="sticky left-0 bg-blue-50 z-20 p-2 border-b-2 border-r-2 border-blue-100 text-blue-900 font-bold min-w-[120px] shadow-[2px_0_5px_rgba(0,0,0,0.05)] text-left">
+              施設 / コート
+            </th>
+            {TIME_SLOTS.map((t, i) => (
+              <th key={t} className="border-b-2 border-r border-blue-50 p-1 font-mono text-gray-500 font-bold min-w-[40px] text-[10px] text-center">
+                {t}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody onMouseLeave={() => setIsDragging(false)} onMouseUp={handleMouseUp}>
+          {RESOURCES.map((resource, rIndex) => (
+            <tr key={resource.id}>
+              <td className="sticky left-0 bg-white z-10 p-2 border-b border-r-2 border-gray-100 font-bold text-gray-700 whitespace-nowrap text-xs shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
+                {resource.name}
+              </td>
+              {TIME_SLOTS.map((t, cIndex) => {
+                const isOccupied = occupiedMap[`${rIndex}-${cIndex}`];
+                let cellClass = "border-b border-r border-gray-100 p-0 h-8 transition-colors ";
+                
+                if (isOccupied) {
+                  // 予約済み：グレーの斜線パターン
+                  cellClass += "bg-[repeating-linear-gradient(45deg,transparent,transparent_4px,rgba(0,0,0,0.05)_4px,rgba(0,0,0,0.05)_8px)] bg-gray-200 cursor-not-allowed ";
+                } else {
+                  cellClass += "cursor-crosshair hover:bg-blue-50 ";
+                }
+
+                if (dragRect && rIndex >= dragRect.minR && rIndex <= dragRect.maxR && cIndex >= dragRect.minC && cIndex <= dragRect.maxC) {
+                  // ドラッグ中：エラーなら赤、正常なら青
+                  cellClass += dragRect.conflict ? "bg-red-400 opacity-80 " : "bg-blue-400 opacity-80 ";
+                } else if (!isDragging && !isOccupied) {
+                  // 現在選択されている項目（ドラッグしていない時）
+                  const isSelected = 
+                    currentStartTime <= TIME_SLOTS[cIndex] && 
+                    currentEndTime >= END_TIMES[cIndex] &&
+                    (
+                      (resource.type === '体育館' && currentFacilities.includes('体育館') && currentCourts.includes(resource.id)) ||
+                      (resource.type === '多目的室' && currentFacilities.includes('多目的室'))
+                    );
+                  if (isSelected) cellClass += "bg-blue-600 shadow-inner ";
+                }
+
+                return (
+                  <td 
+                    key={t}
+                    className={cellClass}
+                    onMouseDown={() => handleMouseDown(rIndex, cIndex, isOccupied)}
+                    onMouseEnter={() => handleMouseEnter(rIndex, cIndex)}
+                  >
+                     <div className="w-full h-full"></div>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -610,93 +781,129 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
           </div>
         </div>
 
-        <div className="bg-white p-8 rounded-3xl border shadow-lg space-y-6">
+        {/* 右カラム：日時と場所 */}
+        <div className="bg-white p-8 rounded-3xl border shadow-lg space-y-6 lg:col-span-2">
           <h3 className="font-bold border-b-2 border-blue-50 pb-3 flex items-center text-blue-900 text-lg tracking-tight"><MapPin className="h-6 w-6 mr-3 text-blue-500"/> ② 日時と場所</h3>
-          <div className="space-y-5">
-            <div className="space-y-2 px-2">
-              <div className="flex justify-between items-center px-1">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">利用日 *</label>
-                <button 
-                  type="button" 
-                  onClick={() => setIsRecurring(!isRecurring)} 
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black transition-all ${isRecurring ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}
-                >
-                  <RefreshCw className={`w-3 h-3 ${isRecurring ? 'animate-spin-slow' : ''}`} />
-                  定期予約{isRecurring ? 'ON' : 'OFF'}
-                </button>
-              </div>
-              <input type="date" required value={selectedDate} onChange={(e)=>setSelectedDate(e.target.value)} className={`border-2 p-4 rounded-2xl w-full font-bold text-lg outline-none transition-all ${isSelectedDateClosed ? 'border-red-500 bg-red-50 text-red-900' : 'border-gray-100 text-blue-900 focus:border-blue-500'}`} />
-              {isSelectedDateClosed && <p className="text-red-500 text-xs font-black flex items-center gap-1 mt-1 px-1"><Ban className="w-3 h-3" /> 休館日のため予約できません</p>}
-            </div>
-
-            {isRecurring && (
-              <div className="space-y-2 px-2 animate-in slide-in-from-top-2">
-                <label className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest px-1 flex items-center gap-2">
-                  <RefreshCw className="w-3 h-3" /> 定期予約の終了日 *
-                </label>
-                <input type="date" required value={recurringEndDate} onChange={(e)=>setRecurringEndDate(e.target.value)} className={`border-2 p-4 rounded-2xl w-full font-bold text-lg text-indigo-900 outline-none transition-all ${hasClosedDayInTargets ? 'border-amber-400 bg-amber-50' : 'border-indigo-100 focus:border-indigo-500'}`} />
-                {hasClosedDayInTargets && (
-                  <div className="bg-amber-50 border border-amber-200 p-2 rounded-lg mt-2 space-y-1">
-                    <p className="text-amber-700 text-[10px] font-black flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> 休館日が含まれています（自動除外）</p>
-                  </div>
-                )}
-              </div>
-            )}
-            
-            <div className="grid grid-cols-2 gap-4 px-2">
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 px-2">
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">開始 *</label>
-                <input type="time" step="600" required value={formData.startTime} onChange={(e)=>setFormData({...formData, startTime:e.target.value})} className="bg-gray-50 p-4 rounded-2xl w-full text-center text-lg font-bold border-2 border-transparent focus:border-blue-500 focus:bg-white outline-none" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">終了 *</label>
-                <input type="time" step="600" required value={formData.endTime} onChange={(e)=>setFormData({...formData, endTime:e.target.value})} className="bg-gray-50 p-4 rounded-2xl w-full text-center text-lg font-bold border-2 border-transparent focus:border-blue-500 focus:bg-white outline-none" />
-              </div>
-            </div>
-
-            <div className="space-y-4 pt-2">
-              <div className="space-y-3 px-2">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">利用施設 (複数選択可) *</label>
-                <div className="flex gap-4">
-                  {['体育館', '多目的室'].map(facility => (
-                    <label key={facility} className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all cursor-pointer font-bold text-sm ${selectedFacilities.includes(facility) ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm' : 'border-gray-100 bg-gray-50 text-gray-400'}`}>
-                      <input type="checkbox" checked={selectedFacilities.includes(facility)} onChange={() => toggleFacility(facility)} className="hidden" />
-                      {selectedFacilities.includes(facility) ? <CheckSquare className="h-4 w-4" /> : <div className="h-4 w-4 border-2 border-gray-200 rounded" />}
-                      {facility}
-                    </label>
-                  ))}
+                <div className="flex justify-between items-center px-1">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">利用日 *</label>
+                  <button 
+                    type="button" 
+                    onClick={() => setIsRecurring(!isRecurring)} 
+                    className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black transition-all ${isRecurring ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}
+                  >
+                    <RefreshCw className={`w-3 h-3 ${isRecurring ? 'animate-spin-slow' : ''}`} />
+                    定期予約{isRecurring ? 'ON' : 'OFF'}
+                  </button>
                 </div>
+                <input type="date" required value={selectedDate} onChange={(e)=>setSelectedDate(e.target.value)} className={`border-2 p-4 rounded-2xl w-full font-bold text-lg outline-none transition-all ${isSelectedDateClosed ? 'border-red-500 bg-red-50 text-red-900' : 'border-gray-100 text-blue-900 focus:border-blue-500'}`} />
+                {isSelectedDateClosed && <p className="text-red-500 text-xs font-black flex items-center gap-1 mt-1 px-1"><Ban className="w-3 h-3" /> 休館日のため予約できません</p>}
               </div>
 
-              {selectedFacilities.includes('体育館') && (
-                <div className="space-y-4 animate-in zoom-in duration-300 px-2">
-                  <label className="text-xs font-bold text-blue-800 flex justify-between px-1">
-                    <span>コート選択 (最大3面) *</span>
-                    <span className="text-[10px] bg-blue-100 px-2 py-0.5 rounded-full">選択中: {selectedCourts.length}/3</span>
+              {isRecurring && (
+                <div className="space-y-2 animate-in slide-in-from-top-2">
+                  <label className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest px-1 flex items-center gap-2">
+                    <RefreshCw className="w-3 h-3" /> 定期予約の終了日 *
                   </label>
-                  <div className="grid grid-cols-1 gap-2 p-5 bg-gray-100 rounded-[2rem] shadow-inner border-2 border-white">
-                    <div className="space-y-3">
-                      <p className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">用具側</p>
-                      <div className="flex space-x-3 justify-center">
-                        {['E', 'D', 'F'].map(c => (
-                          <CourtButton key={c} label={c} active={selectedCourts.includes(c)} occupied={occupiedCourts.includes(c)} onClick={() => toggleCourt(c)} />
-                        ))}
-                      </div>
+                  <input type="date" required value={recurringEndDate} onChange={(e)=>setRecurringEndDate(e.target.value)} className={`border-2 p-4 rounded-2xl w-full font-bold text-lg text-indigo-900 outline-none transition-all ${hasClosedDayInTargets ? 'border-amber-400 bg-amber-50' : 'border-indigo-100 focus:border-indigo-500'}`} />
+                  {hasClosedDayInTargets && (
+                    <div className="bg-amber-50 border border-amber-200 p-2 rounded-lg mt-2 space-y-1">
+                      <p className="text-amber-700 text-[10px] font-black flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> 休館日が含まれています（自動除外）</p>
                     </div>
-                    <div className="my-1 border-b border-gray-200 w-2/3 mx-auto"></div>
-                    <div className="space-y-3">
-                      <p className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">入口側</p>
-                      <div className="flex space-x-3 justify-center">
-                        {['A', 'B', 'C'].map(c => (
-                          <CourtButton key={c} label={c} active={selectedCourts.includes(c)} occupied={occupiedCourts.includes(c)} onClick={() => toggleCourt(c)} />
-                        ))}
-                      </div>
-                    </div>
-                  </div>
+                  )}
                 </div>
               )}
             </div>
-            <div className="space-y-2 px-2">
+
+            {/* 新機能：スケジュールアシスタント */}
+            <div className="space-y-3 px-2 pt-2 animate-in fade-in duration-500">
+              <label className="text-xs font-bold text-blue-700 flex items-center gap-2">
+                <MousePointerClick className="w-5 h-5" /> 
+                スケジュールアシスタント（ドラッグ＆ドロップで予約）
+              </label>
+              <p className="text-[10px] text-gray-500 font-bold mb-2">※ 以下の表で予約したい「時間」と「場所」をマウスでなぞると、自動で入力されます。</p>
+              
+              {selectedDate && !isSelectedDateClosed ? (
+                <TimeGridSelector 
+                  selectedDate={selectedDate}
+                  reservations={reservations}
+                  currentStartTime={formData.startTime}
+                  currentEndTime={formData.endTime}
+                  currentFacilities={selectedFacilities}
+                  currentCourts={selectedCourts}
+                  onSelectionChange={({ startTime, endTime, facilities, courts }) => {
+                    setFormData(prev => ({ ...prev, startTime, endTime }));
+                    setSelectedFacilities(facilities);
+                    setSelectedCourts(courts);
+                  }}
+                />
+              ) : (
+                <div className="bg-gray-50 border-2 border-gray-100 rounded-2xl p-8 text-center text-gray-400 font-bold">
+                  {isSelectedDateClosed ? '休館日のためタイムラインは表示されません' : '利用日を選択するとタイムラインが表示されます'}
+                </div>
+              )}
+            </div>
+            
+            <div className="pt-4 border-t-2 border-gray-50">
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3 mb-4">手動入力（微調整用）</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 px-2">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">開始 *</label>
+                  <input type="time" step="600" required value={formData.startTime} onChange={(e)=>setFormData({...formData, startTime:e.target.value})} className="bg-gray-50 p-4 rounded-2xl w-full text-center text-lg font-bold border-2 border-transparent focus:border-blue-500 focus:bg-white outline-none" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">終了 *</label>
+                  <input type="time" step="600" required value={formData.endTime} onChange={(e)=>setFormData({...formData, endTime:e.target.value})} className="bg-gray-50 p-4 rounded-2xl w-full text-center text-lg font-bold border-2 border-transparent focus:border-blue-500 focus:bg-white outline-none" />
+                </div>
+              </div>
+
+              <div className="space-y-4 pt-6">
+                <div className="space-y-3 px-2">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">利用施設 (複数選択可) *</label>
+                  <div className="flex gap-4">
+                    {['体育館', '多目的室'].map(facility => (
+                      <label key={facility} className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all cursor-pointer font-bold text-sm ${selectedFacilities.includes(facility) ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm' : 'border-gray-100 bg-gray-50 text-gray-400'}`}>
+                        <input type="checkbox" checked={selectedFacilities.includes(facility)} onChange={() => toggleFacility(facility)} className="hidden" />
+                        {selectedFacilities.includes(facility) ? <CheckSquare className="h-4 w-4" /> : <div className="h-4 w-4 border-2 border-gray-200 rounded" />}
+                        {facility}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {selectedFacilities.includes('体育館') && (
+                  <div className="space-y-4 animate-in zoom-in duration-300 px-2">
+                    <label className="text-xs font-bold text-blue-800 flex justify-between px-1">
+                      <span>コート選択 (最大3面) *</span>
+                      <span className="text-[10px] bg-blue-100 px-2 py-0.5 rounded-full">選択中: {selectedCourts.length}/3</span>
+                    </label>
+                    <div className="grid grid-cols-1 gap-2 p-5 bg-gray-100 rounded-[2rem] shadow-inner border-2 border-white">
+                      <div className="space-y-3">
+                        <p className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">用具側</p>
+                        <div className="flex space-x-3 justify-center">
+                          {['E', 'D', 'F'].map(c => (
+                            <CourtButton key={c} label={c} active={selectedCourts.includes(c)} occupied={occupiedCourts.includes(c)} onClick={() => toggleCourt(c)} />
+                          ))}
+                        </div>
+                      </div>
+                      <div className="my-1 border-b border-gray-200 w-2/3 mx-auto"></div>
+                      <div className="space-y-3">
+                        <p className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">入口側</p>
+                        <div className="flex space-x-3 justify-center">
+                          {['A', 'B', 'C'].map(c => (
+                            <CourtButton key={c} label={c} active={selectedCourts.includes(c)} occupied={occupiedCourts.includes(c)} onClick={() => toggleCourt(c)} />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="space-y-2 px-2 pt-4">
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">利用目的 *</label>
               <textarea required placeholder="例：バレー練習" value={formData.purpose} onChange={(e)=>setFormData({...formData, purpose:e.target.value})} className="bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white p-4 rounded-2xl w-full text-sm font-bold h-20 outline-none transition-all shadow-inner" />
             </div>
