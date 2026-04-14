@@ -24,8 +24,28 @@ const safeAppId = String(rawAppId).replace(/\//g, '-');
 // --- セキュリティ用パスワード設定 ---
 const PORTAL_PASSWORD = "kaiteki-user";
 const ADMIN_PASSWORD = "admin123";
-
 const ADMIN_CC_EMAIL = "MCJP-DG-RIX_TOYAMA_TAIIKUKAN@mchcgr.com";
+
+// --- 初期登録団体リスト ---
+const INITIAL_GROUPS = [
+  // 従業員
+  { name: '個人利用（従業員）', type: 'employee' },
+  { name: '中嶋ソアロン社', type: 'employee' },
+  { name: 'MCC卓球', type: 'employee' },
+  { name: '設技バレー', type: 'employee' },
+  // 一般・外部
+  { name: '富山北FC', type: 'external' },
+  { name: 'HAGIURAバレーボール部', type: 'external' },
+  { name: 'Rey華繚乱', type: 'external' },
+  { name: '岩瀬中学校男子バスケットボール部', type: 'external' },
+  { name: 'ピックルボール富山', type: 'external' },
+  { name: '神明フレッシュテニス', type: 'external' },
+  { name: '富山ダルクリカバリークルーズ', type: 'external' },
+  { name: 'FC ALVA', type: 'external' },
+  { name: '富山北部ＶＣ', type: 'external' },
+  { name: 'SDバスケスクール', type: 'external' },
+  { name: '北中女子ソフトテニス部', type: 'external' }
+];
 
 const equipmentForAll = [
   'バドミントン用器具（ポール・ネット）',
@@ -75,6 +95,14 @@ const getFirstDayOfMonth = (year, month) => new Date(year, month - 1, 1).getDay(
 const isTimeOverlapping = (start1, end1, start2, end2) => {
   if (!start1 || !end1 || !start2 || !end2) return false;
   return start1 < end2 && start2 < end1;
+};
+
+// 時間計算ユーティリティ（分単位で計算）
+const calculateDurationMinutes = (start, end) => {
+  if (!start || !end) return 0;
+  const [sH, sM] = start.split(':').map(Number);
+  const [eH, eM] = end.split(':').map(Number);
+  return (eH * 60 + eM) - (sH * 60 + sM);
 };
 
 // --- サブコンポーネント ---
@@ -138,6 +166,7 @@ function TimeGridSelector({ selectedDate, reservations, currentStartTime, curren
         const end = END_TIMES[cIndex];
         const isOccupied = reservations.some(r => {
           if (r.date !== selectedDate) return false;
+          if (r.status === 'cancelled') return false; // キャンセルされた予約は枠を開ける
           if (!isTimeOverlapping(start, end, r.startTime, r.endTime)) return false;
           if (res.type === '体育館' && r.place.includes('体育館') && r.courts && r.courts.includes(res.id)) return true;
           if (res.type === '多目的室' && r.place.includes('多目的室')) return true;
@@ -191,17 +220,12 @@ function TimeGridSelector({ selectedDate, reservations, currentStartTime, curren
         if (res.type === '体育館') courts.push(res.id);
       }
       
-      // コート数が3を超える場合はエラーを出して選択させない
-      if (courts.length > 3) {
-        alert("最大3面までしか一度に選択できません。");
-      } else {
-        onSelectionChange({
-          startTime: TIME_SLOTS[dragRect.minC],
-          endTime: END_TIMES[dragRect.maxC],
-          facilities: Array.from(facilities),
-          courts: courts
-        });
-      }
+      onSelectionChange({
+        startTime: TIME_SLOTS[dragRect.minC],
+        endTime: END_TIMES[dragRect.maxC],
+        facilities: Array.from(facilities),
+        courts: courts
+      });
     }
     setIsDragging(false);
     setDragStart(null);
@@ -234,17 +258,14 @@ function TimeGridSelector({ selectedDate, reservations, currentStartTime, curren
                 let cellClass = "border-b border-r border-gray-100 p-0 h-8 transition-colors ";
                 
                 if (isOccupied) {
-                  // 予約済み：グレーの斜線パターン
                   cellClass += "bg-[repeating-linear-gradient(45deg,transparent,transparent_4px,rgba(0,0,0,0.05)_4px,rgba(0,0,0,0.05)_8px)] bg-gray-200 cursor-not-allowed ";
                 } else {
                   cellClass += "cursor-crosshair hover:bg-blue-50 ";
                 }
 
                 if (dragRect && rIndex >= dragRect.minR && rIndex <= dragRect.maxR && cIndex >= dragRect.minC && cIndex <= dragRect.maxC) {
-                  // ドラッグ中：エラーなら赤、正常なら青
                   cellClass += dragRect.conflict ? "bg-red-400 opacity-80 " : "bg-blue-400 opacity-80 ";
                 } else if (!isDragging && !isOccupied) {
-                  // 現在選択されている項目（ドラッグしていない時）
                   const isSelected = 
                     currentStartTime <= TIME_SLOTS[cIndex] && 
                     currentEndTime >= END_TIMES[cIndex] &&
@@ -288,6 +309,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [reservations, setReservations] = useState([]);
   const [closedDays, setClosedDays] = useState([]);
+  const [groups, setGroups] = useState([]); // 団体マスタ
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -310,6 +332,7 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     
+    // 予約データの取得
     const resRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'reservations');
     const unsubRes = onSnapshot(resRef, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -320,15 +343,35 @@ export default function App() {
       setIsLoading(false); 
     });
 
+    // 休館日データの取得
     const closedRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'closed_days');
     const unsubClosed = onSnapshot(closedRef, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setClosedDays(data);
     });
 
+    // 団体マスタの取得と初期化
+    const groupsRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'groups');
+    const unsubGroups = onSnapshot(groupsRef, (snapshot) => {
+      if (snapshot.empty) {
+        // 初期データをFirebaseに登録する
+        const batch = writeBatch(db);
+        INITIAL_GROUPS.forEach(g => {
+          const docRef = doc(groupsRef);
+          batch.set(docRef, { ...g, createdAt: new Date().toISOString() });
+        });
+        batch.commit();
+      } else {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // 名前順でソート
+        setGroups(data.sort((a,b) => a.name.localeCompare(b.name, 'ja')));
+      }
+    });
+
     return () => {
       unsubRes();
       unsubClosed();
+      unsubGroups();
     };
   }, [user]);
 
@@ -446,13 +489,14 @@ export default function App() {
                 initialDate={preSelectedDate} 
                 reservations={reservations} 
                 closedDays={closedDays}
+                groups={groups}
                 user={user} 
                 onSuccess={(msg) => {showToast(msg || '予約が完了しました。'); setActiveTab('calendar');}} 
               />
             )}
             {activeTab === 'cancel' && <CancelView reservations={reservations} onSuccess={() => { showToast('予約をキャンセルしました'); setActiveTab('calendar'); }} />}
             {activeTab === 'rules' && <RulesView />}
-            {activeTab === 'admin' && isAdmin && <AdminDashboard reservations={reservations} closedDays={closedDays} onStatusUpdate={() => showToast('更新しました')} />}
+            {activeTab === 'admin' && isAdmin && <AdminDashboard reservations={reservations} closedDays={closedDays} groups={groups} onStatusUpdate={() => showToast('更新しました')} />}
           </div>
         )}
       </main>
@@ -496,7 +540,8 @@ function CalendarView({ reservations, closedDays, onReserveClick }) {
   const blanks = Array.from({ length: firstDay }, (_, i) => i);
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
   
-  const selectedDayReservations = reservations.filter(res => res.date === selectedDateStr);
+  // キャンセル済みの予約はカレンダーから除外して枠を空ける
+  const selectedDayReservations = reservations.filter(res => res.date === selectedDateStr && res.status !== 'cancelled');
   const isSelectedDateClosed = closedDays.some(cd => cd.date === selectedDateStr);
 
   return (
@@ -522,7 +567,8 @@ function CalendarView({ reservations, closedDays, onReserveClick }) {
             {blanks.map(b => <div key={`b-${b}`} className="p-2"></div>)}
             {days.map(d => {
               const dStr = formatDateStr(new Date(currentYear, currentMonth - 1, d));
-              const dayRes = reservations.filter(r => r.date === dStr);
+              // キャンセル以外の予約をカウント
+              const dayRes = reservations.filter(r => r.date === dStr && r.status !== 'cancelled');
               const isClosed = closedDays.some(cd => cd.date === dStr);
               const hasApp = dayRes.length > 0;
               const isToday = formatDateStr(new Date()) === dStr;
@@ -604,11 +650,11 @@ function CalendarView({ reservations, closedDays, onReserveClick }) {
   );
 }
 
-function ReservationForm({ initialDate, reservations, closedDays, user, onSuccess }) {
-  const [userType, setUserType] = useState('external');
+function ReservationForm({ initialDate, reservations, closedDays, groups, user, onSuccess }) {
+  const [userType, setUserType] = useState(''); 
   const [selectedDate, setSelectedDate] = useState(initialDate || '');
   const [formData, setFormData] = useState({ 
-    name: '', repName: '', email: '', phone: '', startTime: '', endTime: '', purpose: '', deletePass: '', userCount: ''
+    groupId: '', name: '', repName: '', email: '', phone: '', startTime: '', endTime: '', purpose: '', deletePass: '', userCount: ''
   });
   const [selectedFacilities, setSelectedFacilities] = useState(['体育館']);
   const [selectedCourts, setSelectedCourts] = useState([]);
@@ -654,7 +700,7 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
   const getOccupiedCourts = (date) => {
     if (!date || !formData.startTime || !formData.endTime || !selectedFacilities.includes('体育館')) return [];
     return reservations
-      .filter(r => r.date === date && r.place.includes('体育館') && r.courts)
+      .filter(r => r.date === date && r.place.includes('体育館') && r.courts && r.status !== 'cancelled') 
       .filter(r => isTimeOverlapping(formData.startTime, formData.endTime, r.startTime, r.endTime))
       .flatMap(r => Array.isArray(r.courts) ? r.courts : []);
   };
@@ -674,10 +720,7 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
     if (occupiedCourts.includes(court)) return;
     setSelectedCourts(prev => {
       if (prev.includes(court)) return prev.filter(c => c !== court);
-      if (prev.length >= 3) {
-        alert("最大3面までしか一度に予約できません。");
-        return prev;
-      }
+      // 制限解除: 6面まですべて選択可能
       return [...prev, court].sort();
     });
   };
@@ -689,6 +732,7 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!user) return alert("認証エラーです");
+    if (!formData.groupId) return alert("利用団体を選択してください。");
     if (selectedFacilities.length === 0) return alert("利用する施設を選択してください。");
     if (!formData.deletePass) return alert("取り消し用パスワードを設定してください。");
     
@@ -700,6 +744,24 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
     if (selectedFacilities.includes('体育館') && selectedCourts.length === 0) return alert("コート(A-F)を選んでください。");
     if (targetDates.length > 20) return alert("定期予約は最大20回分までまとめて申請可能です。");
 
+    // --- ルール制約チェック1: 予約可能期間の制限 ---
+    const employeeMaxDate = new Date();
+    employeeMaxDate.setMonth(employeeMaxDate.getMonth() + 3);
+    
+    const externalMaxDate = new Date();
+    externalMaxDate.setMonth(externalMaxDate.getMonth() + 2);
+
+    for (const d of partitionedDates.valid) {
+      const targetDateObj = new Date(d);
+      if (userType === 'employee' && targetDateObj > employeeMaxDate) {
+        return alert(`従業員の予約は、本日より3ヶ月先（${formatDateStr(employeeMaxDate)}）まで可能です。`);
+      }
+      if (userType === 'external' && targetDateObj > externalMaxDate) {
+        return alert(`一般・団体（近隣校区等）の予約は、本日より2ヶ月先（${formatDateStr(externalMaxDate)}）まで可能です。`);
+      }
+    }
+
+    // --- ルール制約チェック2: 重複チェック ---
     for (const d of partitionedDates.valid) {
       if (selectedFacilities.includes('体育館')) {
         const occ = getOccupiedCourts(d);
@@ -708,13 +770,59 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
       }
       if (selectedFacilities.includes('多目的室')) {
         const roomConflict = reservations.some(r => 
-          r.date === d && r.place.includes('多目的室') &&
+          r.date === d && r.place.includes('多目的室') && r.status !== 'cancelled' &&
           isTimeOverlapping(formData.startTime, formData.endTime, r.startTime, r.endTime)
         );
         if (roomConflict) return alert(`${d} の多目的室は既に予約されています。`);
       }
     }
     
+    // --- ルール制約チェック3: 月間20時間制限 ＆ 6面全面予約の月1回制限 ---
+    const newBookingMinutes = calculateDurationMinutes(formData.startTime, formData.endTime);
+    const isSixCourts = selectedFacilities.includes('体育館') && selectedCourts.length === 6;
+
+    // 定期予約を考慮し、月ごとに新規予約回数を集計
+    const monthlyNewBookings = {};
+    partitionedDates.valid.forEach(d => {
+      const monthStr = d.substring(0, 7); // "YYYY-MM"
+      monthlyNewBookings[monthStr] = (monthlyNewBookings[monthStr] || 0) + 1;
+    });
+
+    for (const monthStr of Object.keys(monthlyNewBookings)) {
+      const newCount = monthlyNewBookings[monthStr];
+      const additionalMinutes = newBookingMinutes * newCount;
+
+      // 既存の「同月・同団体」の予約を取得（キャンセル済みも含めて集計する！）
+      const existingResInMonth = reservations.filter(r => {
+        // 「個人利用」の場合は、団体名＋代表者名でユニーク判定して集計する
+        if (formData.name.includes('個人')) {
+          return r.name === formData.name && r.repName === formData.repName && r.date.startsWith(monthStr);
+        }
+        return r.groupId === formData.groupId && r.date.startsWith(monthStr);
+      });
+      
+      let currentTotalMinutes = 0;
+      let currentSixCourtCount = 0;
+
+      existingResInMonth.forEach(r => {
+        currentTotalMinutes += calculateDurationMinutes(r.startTime, r.endTime);
+        if (r.place.includes('体育館') && r.courts && r.courts.length === 6) {
+          currentSixCourtCount++;
+        }
+      });
+
+      // 20時間(1200分)上限チェック
+      if (currentTotalMinutes + additionalMinutes > 20 * 60) {
+        return alert(`【${monthStr}】の予約上限（月間20時間）を超過します。\n・現在の消費枠: ${currentTotalMinutes / 60}時間 (※キャンセル分含む)\n・今回追加: ${additionalMinutes / 60}時間`);
+      }
+
+      // 6面全面予約 月1回上限チェック
+      if (isSixCourts && (currentSixCourtCount + newCount > 1)) {
+        return alert(`【${monthStr}】において、6面（全面）予約は月1回までしかできません。（現在の6面予約枠消費: ${currentSixCourtCount}回）`);
+      }
+    }
+
+    // すべてのチェックを通過したら保存処理へ
     setIsSubmitting(true);
     try {
       const batch = writeBatch(db);
@@ -760,16 +868,40 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white p-8 rounded-3xl border shadow-lg space-y-6 h-fit">
           <h3 className="font-bold border-b-2 border-blue-50 pb-3 flex items-center text-blue-900 text-lg tracking-tight"><Users className="h-6 w-6 mr-3 text-blue-500"/> ① 利用者情報</h3>
-          <div className="flex bg-gray-50 p-1 rounded-2xl shadow-inner">
-            {['employee', 'external'].map(type => (
-              <label key={type} className={`flex-1 py-3.5 rounded-xl text-center cursor-pointer transition-all font-bold text-xs ${userType === type ? 'bg-white shadow text-blue-700' : 'text-gray-400 hover:text-gray-500'}`}>
-                <input type="radio" checked={userType === type} onChange={() => setUserType(type)} className="hidden" />
-                <span>{type === 'employee' ? '従業員' : '一般・団体'}</span>
-              </label>
-            ))}
-          </div>
+          
           <div className="space-y-4">
-            <InputField label="利用団体名 *" value={formData.name} onChange={(v)=>setFormData({...formData, name:v})} placeholder="団体名を入力" />
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3">利用団体 *</label>
+              <select
+                required
+                value={formData.groupId}
+                onChange={(e) => {
+                  const g = groups.find(group => group.id === e.target.value);
+                  if (g) {
+                    setFormData({...formData, groupId: g.id, name: g.name});
+                    setUserType(g.type);
+                  } else {
+                    setFormData({...formData, groupId: '', name: ''});
+                    setUserType('');
+                  }
+                }}
+                className="bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white p-3.5 rounded-2xl w-full text-base font-bold outline-none transition-all shadow-inner text-gray-800"
+              >
+                <option value="">-- 事前登録された団体を選択 --</option>
+                {groups.map(g => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {userType && (
+              <div className="flex items-center gap-2 px-3 py-1 animate-in fade-in">
+                <span className={`text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider ${userType === 'employee' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                  {userType === 'employee' ? '従業員 (3ヶ月先まで予約可)' : '一般・団体 (2ヶ月先まで予約可)'}
+                </span>
+              </div>
+            )}
+
             <InputField label="利用責任者氏名 *" value={formData.repName} onChange={(v)=>setFormData({...formData, repName:v})} placeholder="代表者名" />
             <div className="grid grid-cols-2 gap-4">
               <InputField label="使用人数 *" type="number" value={formData.userCount} onChange={(v)=>setFormData({...formData, userCount:v})} placeholder="名" />
@@ -781,7 +913,6 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
           </div>
         </div>
 
-        {/* 右カラム：日時と場所 */}
         <div className="bg-white p-8 rounded-3xl border shadow-lg space-y-6 lg:col-span-2">
           <h3 className="font-bold border-b-2 border-blue-50 pb-3 flex items-center text-blue-900 text-lg tracking-tight"><MapPin className="h-6 w-6 mr-3 text-blue-500"/> ② 日時と場所</h3>
           <div className="space-y-6">
@@ -817,7 +948,6 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
               )}
             </div>
 
-            {/* 新機能：スケジュールアシスタント */}
             <div className="space-y-3 px-2 pt-2 animate-in fade-in duration-500">
               <label className="text-xs font-bold text-blue-700 flex items-center gap-2">
                 <MousePointerClick className="w-5 h-5" /> 
@@ -876,8 +1006,8 @@ function ReservationForm({ initialDate, reservations, closedDays, user, onSucces
                 {selectedFacilities.includes('体育館') && (
                   <div className="space-y-4 animate-in zoom-in duration-300 px-2">
                     <label className="text-xs font-bold text-blue-800 flex justify-between px-1">
-                      <span>コート選択 (最大3面) *</span>
-                      <span className="text-[10px] bg-blue-100 px-2 py-0.5 rounded-full">選択中: {selectedCourts.length}/3</span>
+                      <span>コート選択 * <span className="text-[10px] font-normal text-blue-500 ml-2">※全面(6面)予約は月1回まで</span></span>
+                      <span className="text-[10px] bg-blue-100 px-2 py-0.5 rounded-full">選択中: {selectedCourts.length}/6</span>
                     </label>
                     <div className="grid grid-cols-1 gap-2 p-5 bg-gray-100 rounded-[2rem] shadow-inner border-2 border-white">
                       <div className="space-y-3">
@@ -963,9 +1093,10 @@ function CancelView({ reservations, onSuccess }) {
     e.preventDefault();
     if (!searchTerm.trim()) return;
     const results = reservations.filter(res => 
-      (res.phone && res.phone.includes(searchTerm)) || 
-      (res.repName && res.repName.includes(searchTerm)) || 
-      (res.name && res.name.includes(searchTerm))
+      res.status !== 'cancelled' && 
+      ((res.phone && res.phone.includes(searchTerm)) || 
+       (res.repName && res.repName.includes(searchTerm)) || 
+       (res.name && res.name.includes(searchTerm)))
     );
     setFilteredResults(results);
   };
@@ -974,9 +1105,11 @@ function CancelView({ reservations, onSuccess }) {
     if (!inputDeletePass) return alert("取消用パスワードを入力してください。");
     if (targetRes.deletePass !== inputDeletePass) return alert("パスワードが正しくありません。");
 
-    if (window.confirm('この予約を取り消しますか？')) {
+    if (window.confirm('この予約を取り消しますか？\n\n※注意：取り消しをおこなった場合でも、当月の【月間利用枠(20時間)】としてはカウントされ続けます。')) {
       try {
-        await deleteDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', targetRes.id));
+        await updateDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', targetRes.id), {
+          status: 'cancelled'
+        });
         onSuccess();
         setInputDeletePass('');
       } catch (err) {
@@ -1025,7 +1158,7 @@ function CancelView({ reservations, onSuccess }) {
           ) : searchTerm && (
             <div className="text-center py-12 text-gray-400 space-y-2">
               <AlertTriangle className="h-10 w-10 mx-auto opacity-20" />
-              <p className="font-bold">該当する予約が見つかりません</p>
+              <p className="font-bold">有効な予約が見つかりません</p>
             </div>
           )}
         </div>
@@ -1034,7 +1167,7 @@ function CancelView({ reservations, onSuccess }) {
   );
 }
 
-function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
+function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
   const [printWeekStart, setPrintWeekStart] = useState(formatDateStr(new Date()));
   const [showPrintView, setShowPrintView] = useState(false);
   
@@ -1042,15 +1175,41 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
   const [closedEnd, setClosedEnd] = useState('');
   const [closedReason, setClosedReason] = useState('');
 
+  const [newGroupName, setNewGroupName] = useState('');
+  const [newGroupType, setNewGroupType] = useState('external');
+
   const deleteReservation = async (id) => {
-    if (window.confirm('管理者権限でこの予約を削除しますか？')) {
+    if (window.confirm('管理者権限でこの予約データを完全に削除しますか？\n（※利用者のペナルティ枠からも消去されます）')) {
       await deleteDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', id));
       onStatusUpdate();
     }
   };
 
+  const handleAddGroup = async (e) => {
+    e.preventDefault();
+    if (!newGroupName) return;
+    try {
+      await addDoc(collection(db, 'artifacts', safeAppId, 'public', 'data', 'groups'), {
+        name: newGroupName,
+        type: newGroupType,
+        createdAt: new Date().toISOString()
+      });
+      setNewGroupName('');
+      onStatusUpdate();
+    } catch (err) { alert("団体の追加に失敗しました"); }
+  };
+
+  const handleDeleteGroup = async (id) => {
+    if (window.confirm('この団体を削除しますか？\n※既存の予約データには影響しませんが、新規予約時に選択できなくなります。')) {
+      try {
+        await deleteDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'groups', id));
+        onStatusUpdate();
+      } catch (err) { alert("削除に失敗しました"); }
+    }
+  };
+
   const launchEmailToReservedUsers = (targetDates) => {
-    const reservedUsersInPeriod = reservations.filter(r => targetDates.includes(r.date) && r.email);
+    const reservedUsersInPeriod = reservations.filter(r => targetDates.includes(r.date) && r.email && r.status !== 'cancelled');
     if (reservedUsersInPeriod.length === 0) return;
     const uniqueEmails = [...new Set(reservedUsersInPeriod.map(u => u.email))];
     const toField = uniqueEmails.join(',');
@@ -1097,8 +1256,9 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
   };
 
   const exportToCSV = () => {
-    const headers = ["利用日", "開始", "終了", "場所", "コート", "団体名", "代表者", "使用人数", "電話番号"];
+    const headers = ["ステータス", "利用日", "開始", "終了", "場所", "コート", "団体名", "代表者", "使用人数", "電話番号"];
     const rows = reservations.map(r => [
+      r.status === 'cancelled' ? 'キャンセル済' : '有効',
       r.date, r.startTime, r.endTime, r.place, 
       r.courts ? r.courts.join(', ') : '-',
       r.name, r.repName, r.userCount || '-', r.phone
@@ -1125,7 +1285,7 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
           <h2 className="text-3xl font-black flex items-center text-blue-950 tracking-tight">
             <ShieldCheck className="mr-3 h-10 w-10 text-blue-600"/> 管理者メニュー
           </h2>
-          <p className="text-xs font-bold text-gray-500 mt-1">予約管理とデータの出力を行います</p>
+          <p className="text-xs font-bold text-gray-500 mt-1">システムの設定とデータの出力を行います</p>
         </div>
         <button onClick={exportToCSV} className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm hover:bg-green-700 shadow-lg active:scale-95 transition-all">
           <Download className="h-4 w-4" /><span>CSV出力(Excel用)</span>
@@ -1133,6 +1293,37 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+
+        {/* 新機能：登録団体管理 */}
+        <div className="bg-white p-6 rounded-[2rem] border-2 border-indigo-50 shadow-xl space-y-4 lg:col-span-2">
+          <h3 className="font-bold text-lg flex items-center text-indigo-900"><Users className="h-5 w-5 mr-2" /> 利用団体の管理 (事前登録)</h3>
+          
+          <form onSubmit={handleAddGroup} className="flex flex-col sm:flex-row gap-2">
+            <input type="text" required placeholder="新規団体名・個人名など" value={newGroupName} onChange={(e)=>setNewGroupName(e.target.value)} className="flex-1 border p-3 rounded-xl text-sm font-bold outline-none focus:border-indigo-500" />
+            <select value={newGroupType} onChange={(e)=>setNewGroupType(e.target.value)} className="border p-3 rounded-xl text-sm font-bold bg-white outline-none focus:border-indigo-500">
+              <option value="external">一般・団体</option>
+              <option value="employee">従業員</option>
+            </select>
+            <button type="submit" className="bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold text-sm hover:bg-indigo-700 shadow-lg transition-all active:scale-95 whitespace-nowrap">追加</button>
+          </form>
+
+          <div className="pt-4 border-t border-indigo-50">
+             <div className="max-h-60 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pr-1">
+              {groups.map(g => (
+                <div key={g.id} className="flex justify-between items-center bg-indigo-50/50 p-3 rounded-xl border border-indigo-100">
+                  <div className="flex flex-col">
+                    <span className="text-sm font-bold text-gray-800">{g.name}</span>
+                    <span className={`text-[10px] font-black w-fit px-2 py-0.5 rounded uppercase mt-1 ${g.type === 'employee' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                      {g.type === 'employee' ? '従業員' : '一般・団体'}
+                    </span>
+                  </div>
+                  <button onClick={()=>handleDeleteGroup(g.id)} className="text-indigo-300 hover:text-red-600 p-2 transition-colors"><Trash2 className="h-4 w-4"/></button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
         <div className="bg-white p-6 rounded-[2rem] border-2 border-blue-50 shadow-xl space-y-4 h-fit">
           <h3 className="font-bold text-lg flex items-center text-blue-900"><Printer className="h-5 w-5 mr-2" /> 週間予定表の作成 (A3印刷用)</h3>
           <div className="flex flex-wrap items-center gap-4">
@@ -1172,9 +1363,12 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
         </h3>
         <div className="space-y-4">
           {sortedReservations.length === 0 ? <p className="text-center text-gray-300 py-10 font-bold">予約データはありません</p> : sortedReservations.map(res => (
-            <div key={res.id} className="bg-white p-6 rounded-3xl border shadow-md flex flex-col md:flex-row justify-between gap-6">
+            <div key={res.id} className={`bg-white p-6 rounded-3xl border shadow-md flex flex-col md:flex-row justify-between gap-6 transition-all ${res.status === 'cancelled' ? 'opacity-60 bg-gray-50' : ''}`}>
               <div className="flex-1 space-y-1">
-                <div className="font-black text-xl">{res.date} <span className="text-blue-600 ml-2">({res.startTime}-{res.endTime})</span></div>
+                <div className="font-black text-xl">
+                  {res.date} <span className="text-blue-600 ml-2">({res.startTime}-{res.endTime})</span>
+                  {res.status === 'cancelled' && <span className="ml-3 text-xs bg-red-100 text-red-600 px-2 py-1 rounded">キャンセル済（枠消費）</span>}
+                </div>
                 <div className="text-sm font-bold text-gray-600">{res.place} {res.courts ? `(${res.courts.join(', ')})` : ''} | {res.name}</div>
                 <div className="text-xs text-gray-400 italic flex items-center gap-4">
                   <span>目的: {res.purpose}</span>
@@ -1182,7 +1376,7 @@ function AdminDashboard({ reservations, closedDays, onStatusUpdate }) {
                   <span>代表: {res.repName} ({res.phone})</span>
                 </div>
               </div>
-              <button onClick={()=>deleteReservation(res.id)} className="px-6 py-2 bg-red-50 text-red-600 font-bold text-xs hover:bg-red-100 rounded-xl transition-colors">削除</button>
+              <button onClick={()=>deleteReservation(res.id)} className="px-6 py-2 bg-red-50 text-red-600 font-bold text-xs hover:bg-red-100 rounded-xl transition-colors">完全削除</button>
             </div>
           ))}
         </div>
@@ -1246,7 +1440,7 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                 {weekDays.map(d => {
                   const isClosed = closedDateStrs.includes(d);
                   const dayCourts = reservations
-                    .filter(r => r.date === d && r.place.includes('体育館') && r.courts && r.courts.includes(c))
+                    .filter(r => r.date === d && r.place.includes('体育館') && r.courts && r.courts.includes(c) && r.status !== 'cancelled')
                     .sort((a,b)=>a.startTime.localeCompare(b.startTime));
                   return (
                     <td key={d} className={`border-2 border-black p-1 align-top relative ${isClosed ? 'bg-gray-100' : ''}`}>
@@ -1270,7 +1464,7 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
               {weekDays.map(d => {
                   const isClosed = closedDateStrs.includes(d);
                   const rooms = reservations
-                    .filter(r => r.date === d && r.place.includes('多目的室'))
+                    .filter(r => r.date === d && r.place.includes('多目的室') && r.status !== 'cancelled')
                     .sort((a,b)=>a.startTime.localeCompare(b.startTime));
                   return (
                     <td key={d} className={`border-2 border-black p-1 align-top ${isClosed ? 'bg-gray-100' : ''}`}>
@@ -1312,29 +1506,45 @@ function RulesView() {
             <div className="bg-gray-50 p-8 rounded-[3rem] space-y-8 shadow-inner border-2 border-white leading-relaxed">
               <div className="space-y-4">
                 <div className="flex justify-between items-center text-xl"><span>平日</span><span className="bg-gray-900 text-white px-5 py-1.5 rounded-2xl shadow-xl font-mono">8:30 - 21:00</span></div>
-                <div className="flex justify-between items-center text-xl"><span>休日</span><span className="bg-gray-900 text-white px-5 py-1.5 rounded-2xl shadow-xl font-mono">8:30 - 17:00</span></div>
+                <div className="flex justify-between items-center text-xl"><span>土日・祝日</span><span className="bg-gray-900 text-white px-5 py-1.5 rounded-2xl shadow-xl font-mono">8:30 - 17:00</span></div>
               </div>
               <div className="pt-8 border-t-2 border-gray-100 space-y-4">
-                <p className="text-2xl text-red-600 font-black tracking-tighter leading-none">毎月 第１・第３日曜日</p>
-                <p className="text-[11px] text-gray-400 mt-2 leading-relaxed font-bold">※お盆、正月、GW、会社カレンダー準拠。</p>
+                <p className="text-base text-blue-600 font-black tracking-tighter leading-none">日曜日もご予約・ご利用いただけます。</p>
+                <p className="text-[11px] text-gray-400 mt-2 leading-relaxed font-bold">※お盆、正月、GWなど会社カレンダーによる休館日があります。休館日はカレンダーでご確認ください。</p>
               </div>
             </div>
           </section>
           <section>
-            <h3 className="flex items-center text-blue-800 text-2xl mb-8 border-l-[10px] border-blue-700 pl-6 tracking-tight font-black">② 予約期間</h3>
+            <h3 className="flex items-center text-blue-800 text-2xl mb-8 border-l-[10px] border-blue-700 pl-6 tracking-tight font-black">② 予約可能期間・制限</h3>
             <div className="bg-blue-50 p-8 rounded-[3rem] space-y-6 shadow-inner border-2 border-white">
-              <p className="text-base font-black text-blue-950 text-center tracking-wide leading-none">3ヶ月周期での予約受付</p>
-              <table className="w-full text-xs bg-white rounded-3xl overflow-hidden border-4 border-blue-100 shadow-xl">
-                <thead className="bg-blue-600 text-white">
-                  <tr><th className="p-4 border-r border-blue-500">受付開始日</th><th className="p-4">対象期間</th></tr>
-                </thead>
-                <tbody className="text-gray-700 font-black">
-                  <tr className="border-b-2 border-blue-50"><td className="p-4 border-r text-center bg-gray-50/50">12/1〜</td><td className="p-4 text-center">翌1月〜3月末</td></tr>
-                  <tr className="border-b-2 border-blue-50"><td className="p-4 border-r text-center bg-gray-50/50">3/1〜</td><td className="p-4 text-center">4月〜6月末</td></tr>
-                  <tr className="border-b-2 border-blue-50"><td className="p-4 border-r text-center bg-gray-50/50">6/1〜</td><td className="p-4 text-center">7月〜9月末</td></tr>
-                  <tr><td className="p-4 border-r text-center bg-gray-50/50">9/1〜</td><td className="p-4 text-center">10月〜12月末</td></tr>
-                </tbody>
-              </table>
+              <p className="text-sm font-black text-blue-950 tracking-wide leading-none mb-4">利用者区分によって予約開始日が異なります。</p>
+              
+              <div className="bg-white p-4 rounded-2xl border-2 border-blue-100 shadow-sm">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded font-black">従業員</span>
+                  <span className="text-sm font-bold text-gray-800">3ヶ月先まで予約可能</span>
+                </div>
+                <p className="text-[10px] text-gray-500">本日より3ヶ月先の同日までご予約いただけます。</p>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border-2 border-green-100 shadow-sm">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded font-black">一般・団体</span>
+                  <span className="text-sm font-bold text-gray-800">2ヶ月先まで予約可能</span>
+                </div>
+                <p className="text-[10px] text-gray-500">本日より2ヶ月先の同日までご予約いただけます。</p>
+              </div>
+              
+              <div className="mt-4 space-y-3 pt-4 border-t-2 border-blue-100/50">
+                 <p className="text-xs font-black text-red-600 border-l-4 border-red-500 pl-2">【月間利用制限】 全団体共通：月20時間まで</p>
+                 <p className="text-xs font-black text-red-600 border-l-4 border-red-500 pl-2">【全面予約制限】 体育館6面の全面予約は月1回まで</p>
+                 <div className="bg-red-50 p-3 rounded-xl border border-red-100 mt-2">
+                   <p className="text-[10px] text-red-800 font-bold leading-relaxed">
+                     <AlertTriangle className="inline w-3 h-3 mr-1 mb-0.5"/>
+                     キャンセルした場合も、ペナルティとして当月の利用可能枠（20時間）を消費します。計画的なご予約をお願いいたします。
+                   </p>
+                 </div>
+              </div>
             </div>
           </section>
         </div>
