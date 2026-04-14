@@ -28,7 +28,7 @@ const ADMIN_CC_EMAIL = "MCJP-DG-RIX_TOYAMA_TAIIKUKAN@mchcgr.com";
 
 // --- 初期登録団体リスト ---
 const INITIAL_GROUPS = [
-  // 会社の部活（6ヶ月先まで）
+  // 会社の部活（次年度の3/31まで）
   { name: 'MCCバレー', type: 'mcc' },
   { name: 'MCC卓球', type: 'mcc' },
   { name: 'MCCバドミントン', type: 'mcc' },
@@ -56,21 +56,19 @@ const INITIAL_GROUPS = [
   { name: '北中女子ソフトテニス部', type: 'external' }
 ];
 
+// --- 貸出備品（全団体・個人共通で利用可能） ---
 const equipmentForAll = [
   'バドミントン用器具（ポール・ネット）',
   'ビーチボールバレー用器具（ポール・ネット・審判台）',
   'バレーボール用器具（ポール・ネット・審判台）',
   '卓球用器具（台・ネット）',
-  'フットサル用器具（ゴール）'
-];
-
-const equipmentForEmployeesOnly = [
+  'フットサル用器具（ゴール）',
   'バドミントン用品（ラケット、シャトル）',
   '各種ボール（ビーチ、バスケ、ドッジ、バレー、卓球）',
   '卓球ラケット'
 ];
 
-// --- タイムライン（スケジュールアシスタント）用の定数 ---
+// --- タイムライン用の定数 ---
 const TIME_SLOTS = [
   "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", 
   "12:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", 
@@ -81,9 +79,10 @@ const END_TIMES = [
   "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30",
   "17:00", "17:30", "18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00"
 ];
+// コートの並び順を用具側(D,E,F) → 入口側(A,B,C) に変更
 const RESOURCES = [
-  { id: 'E', name: 'コートE (用具側)', type: '体育館' },
   { id: 'D', name: 'コートD (用具側)', type: '体育館' },
+  { id: 'E', name: 'コートE (用具側)', type: '体育館' },
   { id: 'F', name: 'コートF (用具側)', type: '体育館' },
   { id: 'A', name: 'コートA (入口側)', type: '体育館' },
   { id: 'B', name: 'コートB (入口側)', type: '体育館' },
@@ -161,7 +160,7 @@ function InputField({ label, value, onChange, placeholder, type = "text" }) {
   );
 }
 
-// タイムライングリッドセレクター（Outlookスケジュールアシスタント風）
+// タイムライングリッドセレクター
 function TimeGridSelector({ selectedDate, reservations, currentStartTime, currentEndTime, currentFacilities, currentCourts, onSelectionChange }) {
   const [dragStart, setDragStart] = useState(null);
   const [dragCurrent, setDragCurrent] = useState(null);
@@ -175,7 +174,7 @@ function TimeGridSelector({ selectedDate, reservations, currentStartTime, curren
         const end = END_TIMES[cIndex];
         const isOccupied = reservations.some(r => {
           if (r.date !== selectedDate) return false;
-          if (r.status === 'cancelled') return false; // キャンセルされた予約は枠を開ける
+          if (r.status === 'cancelled') return false; 
           if (!isTimeOverlapping(start, end, r.startTime, r.endTime)) return false;
           if (res.type === '体育館' && r.place.includes('体育館') && r.courts && r.courts.includes(res.id)) return true;
           if (res.type === '多目的室' && r.place.includes('多目的室')) return true;
@@ -754,8 +753,14 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
     if (targetDates.length > 20) return alert("定期予約は最大20回分までまとめて申請可能です。");
 
     // --- ルール制約チェック1: 予約可能期間の制限 ---
-    const mccMaxDate = new Date();
-    mccMaxDate.setMonth(mccMaxDate.getMonth() + 6);
+    // 年度単位（次年度の3月31日まで）の設定
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth() + 1;
+    // 現在の月が1〜3月の場合はその年の3/31が年度末、4〜12月の場合は来年の3/31が年度末
+    const endOfCurrentFiscalYear = new Date(currentMonth <= 3 ? currentYear : currentYear + 1, 2, 31); 
+    // さらに「次年度」の末日まで許可（約1年間先まで）
+    const mccMaxDate = new Date(endOfCurrentFiscalYear.getFullYear() + 1, 2, 31);
 
     const employeeMaxDate = new Date();
     employeeMaxDate.setMonth(employeeMaxDate.getMonth() + 3);
@@ -766,7 +771,7 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
     for (const d of partitionedDates.valid) {
       const targetDateObj = new Date(d);
       if (userType === 'mcc' && targetDateObj > mccMaxDate) {
-        return alert(`会社の部活（MCC等）の予約は、本日より6ヶ月先（${formatDateStr(mccMaxDate)}）まで可能です。`);
+        return alert(`会社の部活（MCC等）の予約は、次年度の3月末（${formatDateStr(mccMaxDate)}）まで可能です。`);
       }
       if (userType === 'employee' && targetDateObj > employeeMaxDate) {
         return alert(`従業員の予約は、本日より3ヶ月先（${formatDateStr(employeeMaxDate)}）まで可能です。`);
@@ -912,7 +917,7 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
             {userType && (
               <div className="flex items-center gap-2 px-3 py-1 animate-in fade-in">
                 <span className={`text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider ${userType === 'mcc' ? 'bg-purple-100 text-purple-700' : userType === 'employee' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-                  {userType === 'mcc' ? '会社の部活 (6ヶ月先まで予約可)' : userType === 'employee' ? '従業員 (3ヶ月先まで予約可)' : '一般・団体 (2ヶ月先まで予約可)'}
+                  {userType === 'mcc' ? '会社の部活 (次年度3月末まで可)' : userType === 'employee' ? '従業員 (3ヶ月先まで予約可)' : '一般・団体 (2ヶ月先まで予約可)'}
                 </span>
               </div>
             )}
@@ -1028,7 +1033,7 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
                       <div className="space-y-3">
                         <p className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">用具側</p>
                         <div className="flex space-x-3 justify-center">
-                          {['E', 'D', 'F'].map(c => (
+                          {['D', 'E', 'F'].map(c => (
                             <CourtButton key={c} label={c} active={selectedCourts.includes(c)} occupied={occupiedCourts.includes(c)} onClick={() => toggleCourt(c)} />
                           ))}
                         </div>
@@ -1057,28 +1062,15 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
 
         <div className="bg-white p-8 rounded-[2.5rem] border shadow-lg space-y-6 lg:col-span-2">
           <h3 className="font-bold border-b-2 border-blue-50 pb-3 flex items-center text-blue-900 text-lg tracking-tight"><CheckSquare className="h-7 w-7 mr-3 text-blue-500"/> ③ 貸出備品</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 px-2">
-            <div className="space-y-4">
-              <p className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full w-fit tracking-wider border border-blue-100 uppercase">All Users</p>
-              <div className="grid grid-cols-1 gap-2">
-                {equipmentForAll.map(item => (
-                  <label key={item} className="flex items-center space-x-3 text-sm font-bold cursor-pointer hover:bg-gray-50 p-2 rounded-xl transition-colors">
-                    <input type="checkbox" checked={equipment.includes(item)} onChange={() => toggleEquipment(item)} className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                    <span>{item}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div className={`space-y-4 ${(userType !== 'employee' && userType !== 'mcc') ? 'opacity-30' : ''}`}>
-              <p className="text-xs font-bold text-red-600 bg-red-50 px-3 py-1 rounded-full w-fit tracking-wider border border-red-100 uppercase">Employees Only</p>
-              <div className="grid grid-cols-1 gap-2">
-                {equipmentForEmployeesOnly.map(item => (
-                  <label key={item} className={`flex items-center space-x-3 text-sm font-bold ${(userType !== 'employee' && userType !== 'mcc') ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-gray-50'} p-2 rounded-xl transition-colors`}>
-                    <input type="checkbox" disabled={userType !== 'employee' && userType !== 'mcc'} checked={equipment.includes(item)} onChange={() => toggleEquipment(item)} className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                    <span>{item}</span>
-                  </label>
-                ))}
-              </div>
+          <div className="px-2">
+            <p className="text-xs font-bold text-gray-500 mb-4">すべての団体・個人で利用可能な備品です。（複数選択可）</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {equipmentForAll.map(item => (
+                <label key={item} className="flex items-center space-x-3 text-sm font-bold cursor-pointer hover:bg-blue-50 p-3 rounded-xl transition-colors border border-gray-100">
+                  <input type="checkbox" checked={equipment.includes(item)} onChange={() => toggleEquipment(item)} className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                  <span>{item}</span>
+                </label>
+              ))}
             </div>
           </div>
         </div>
@@ -1193,10 +1185,20 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupType, setNewGroupType] = useState('external');
 
-  const deleteReservation = async (id) => {
-    if (window.confirm('管理者権限でこの予約データを完全に削除しますか？\n（※利用者のペナルティ枠からも消去されます）')) {
-      await deleteDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', id));
-      onStatusUpdate();
+  // キャンセル処理（ペナルティの有無を選択）
+  const cancelReservation = async (id, isHardDelete) => {
+    if (isHardDelete) {
+      if (window.confirm('この予約データを完全に削除しますか？\n（※利用者のペナルティ枠からも消去され、枠が戻ります）')) {
+        await deleteDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', id));
+        onStatusUpdate();
+      }
+    } else {
+      if (window.confirm('この予約を「キャンセル済」として処理しますか？\n（※月20時間の利用枠は消費したままになります）')) {
+        await updateDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', id), {
+          status: 'cancelled'
+        });
+        onStatusUpdate();
+      }
     }
   };
 
@@ -1379,7 +1381,7 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
         </h3>
         <div className="space-y-4">
           {sortedReservations.length === 0 ? <p className="text-center text-gray-300 py-10 font-bold">予約データはありません</p> : sortedReservations.map(res => (
-            <div key={res.id} className={`bg-white p-6 rounded-3xl border shadow-md flex flex-col md:flex-row justify-between gap-6 transition-all ${res.status === 'cancelled' ? 'opacity-60 bg-gray-50' : ''}`}>
+            <div key={res.id} className={`bg-white p-6 rounded-3xl border shadow-md flex flex-col md:flex-row justify-between gap-4 transition-all ${res.status === 'cancelled' ? 'opacity-60 bg-gray-50' : ''}`}>
               <div className="flex-1 space-y-1">
                 <div className="font-black text-xl">
                   {res.date} <span className="text-blue-600 ml-2">({res.startTime}-{res.endTime})</span>
@@ -1392,7 +1394,10 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
                   <span>代表: {res.repName} ({res.phone})</span>
                 </div>
               </div>
-              <button onClick={()=>deleteReservation(res.id)} className="px-6 py-2 bg-red-50 text-red-600 font-bold text-xs hover:bg-red-100 rounded-xl transition-colors">完全削除</button>
+              <div className="flex flex-col gap-2 min-w-[120px]">
+                <button onClick={()=>cancelReservation(res.id, false)} className="px-4 py-2 bg-yellow-50 text-yellow-700 font-bold text-xs hover:bg-yellow-100 rounded-xl transition-colors border border-yellow-200">取消(枠消費)</button>
+                <button onClick={()=>cancelReservation(res.id, true)} className="px-4 py-2 bg-red-50 text-red-600 font-bold text-xs hover:bg-red-100 rounded-xl transition-colors border border-red-200">完全削除(枠戻す)</button>
+              </div>
             </div>
           ))}
         </div>
@@ -1408,7 +1413,8 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
     d.setDate(weekStart.getDate() + i);
     return formatDateStr(d);
   });
-  const courts = ['E', 'D', 'F', 'A', 'B', 'C'];
+  // 印刷画面も D~F（用具側）→ A~C（入口側）の順に変更
+  const courts = ['D', 'E', 'F', 'A', 'B', 'C'];
   const closedDateStrs = closedDays.map(cd => cd.date);
 
   return (
@@ -1451,7 +1457,7 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
             {courts.map(c => (
               <tr key={c} className="h-28">
                 <td className="border-2 border-black p-2 text-center font-bold bg-gray-50 text-base">
-                  {c}<br/><span className="text-[8px] text-gray-400 font-normal">{(['E','D','F'].includes(c)) ? '用具側' : '入口側'}</span>
+                  {c}<br/><span className="text-[8px] text-gray-400 font-normal">{(['A','B','C'].includes(c)) ? '入口側' : '用具側'}</span>
                 </td>
                 {weekDays.map(d => {
                   const isClosed = closedDateStrs.includes(d);
@@ -1538,9 +1544,9 @@ function RulesView() {
               <div className="bg-white p-4 rounded-2xl border-2 border-purple-100 shadow-sm">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded font-black">会社の部活</span>
-                  <span className="text-sm font-bold text-gray-800">6ヶ月先まで予約可能</span>
+                  <span className="text-sm font-bold text-gray-800">次年度の3月末まで</span>
                 </div>
-                <p className="text-[10px] text-gray-500">本日より6ヶ月先の同日までご予約いただけます。</p>
+                <p className="text-[10px] text-gray-500">現在から次年度の3月31日まで一括してご予約いただけます。</p>
               </div>
 
               <div className="bg-white p-4 rounded-2xl border-2 border-blue-100 shadow-sm">
