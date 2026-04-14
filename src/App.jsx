@@ -28,22 +28,31 @@ const ADMIN_CC_EMAIL = "MCJP-DG-RIX_TOYAMA_TAIIKUKAN@mchcgr.com";
 
 // --- 初期登録団体リスト ---
 const INITIAL_GROUPS = [
-  // 従業員
-  { name: '個人利用（従業員）', type: 'employee' },
-  { name: '中嶋ソアロン社', type: 'employee' },
-  { name: 'MCC卓球', type: 'employee' },
-  { name: '設技バレー', type: 'employee' },
-  // 一般・外部
-  { name: '富山北FC', type: 'external' },
-  { name: 'HAGIURAバレーボール部', type: 'external' },
+  // 会社の部活（6ヶ月先まで）
+  { name: 'MCCバレー', type: 'mcc' },
+  { name: 'MCC卓球', type: 'mcc' },
+  { name: 'MCCバドミントン', type: 'mcc' },
+  // 従業員利用（3ヶ月先まで）
+  { name: '佐野（富山北FC）', type: 'employee' },
+  { name: '朝岡（FC ALVA)', type: 'employee' },
+  { name: '斉藤（和合ハンドボール）', type: 'employee' },
+  { name: '斉藤（ターミガンズ ジュニア）', type: 'employee' },
+  { name: '金森（ピックルボール富山）', type: 'employee' },
+  { name: '金森（神明フレッシュテニス）', type: 'employee' },
+  { name: '亀畑', type: 'employee' },
+  { name: '林田（hayashuda)', type: 'employee' },
+  { name: '吉岡（富山ドリームズ）', type: 'employee' },
+  { name: '梅田', type: 'employee' },
+  { name: '古金(BC)', type: 'employee' },
+  // 一般・外部（2ヶ月先まで）
+  { name: 'BRABBTS', type: 'external' },
+  { name: '富山ダルク', type: 'external' },
   { name: 'Rey華繚乱', type: 'external' },
-  { name: '岩瀬中学校男子バスケットボール部', type: 'external' },
-  { name: 'ピックルボール富山', type: 'external' },
-  { name: '神明フレッシュテニス', type: 'external' },
-  { name: '富山ダルクリカバリークルーズ', type: 'external' },
-  { name: 'FC ALVA', type: 'external' },
-  { name: '富山北部ＶＣ', type: 'external' },
-  { name: 'SDバスケスクール', type: 'external' },
+  { name: 'SDバスケ', type: 'external' },
+  { name: '岩瀬中バスケ', type: 'external' },
+  { name: '富山北FC', type: 'external' },
+  { name: 'HAGIURAバレー', type: 'external' },
+  { name: '富山北部VC', type: 'external' },
   { name: '北中女子ソフトテニス部', type: 'external' }
 ];
 
@@ -745,6 +754,9 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
     if (targetDates.length > 20) return alert("定期予約は最大20回分までまとめて申請可能です。");
 
     // --- ルール制約チェック1: 予約可能期間の制限 ---
+    const mccMaxDate = new Date();
+    mccMaxDate.setMonth(mccMaxDate.getMonth() + 6);
+
     const employeeMaxDate = new Date();
     employeeMaxDate.setMonth(employeeMaxDate.getMonth() + 3);
     
@@ -753,6 +765,9 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
 
     for (const d of partitionedDates.valid) {
       const targetDateObj = new Date(d);
+      if (userType === 'mcc' && targetDateObj > mccMaxDate) {
+        return alert(`会社の部活（MCC等）の予約は、本日より6ヶ月先（${formatDateStr(mccMaxDate)}）まで可能です。`);
+      }
       if (userType === 'employee' && targetDateObj > employeeMaxDate) {
         return alert(`従業員の予約は、本日より3ヶ月先（${formatDateStr(employeeMaxDate)}）まで可能です。`);
       }
@@ -896,8 +911,8 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
 
             {userType && (
               <div className="flex items-center gap-2 px-3 py-1 animate-in fade-in">
-                <span className={`text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider ${userType === 'employee' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-                  {userType === 'employee' ? '従業員 (3ヶ月先まで予約可)' : '一般・団体 (2ヶ月先まで予約可)'}
+                <span className={`text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider ${userType === 'mcc' ? 'bg-purple-100 text-purple-700' : userType === 'employee' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                  {userType === 'mcc' ? '会社の部活 (6ヶ月先まで予約可)' : userType === 'employee' ? '従業員 (3ヶ月先まで予約可)' : '一般・団体 (2ヶ月先まで予約可)'}
                 </span>
               </div>
             )}
@@ -1054,12 +1069,12 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
                 ))}
               </div>
             </div>
-            <div className={`space-y-4 ${userType !== 'employee' ? 'opacity-30' : ''}`}>
+            <div className={`space-y-4 ${(userType !== 'employee' && userType !== 'mcc') ? 'opacity-30' : ''}`}>
               <p className="text-xs font-bold text-red-600 bg-red-50 px-3 py-1 rounded-full w-fit tracking-wider border border-red-100 uppercase">Employees Only</p>
               <div className="grid grid-cols-1 gap-2">
                 {equipmentForEmployeesOnly.map(item => (
-                  <label key={item} className={`flex items-center space-x-3 text-sm font-bold ${userType !== 'employee' ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-gray-50'} p-2 rounded-xl transition-colors`}>
-                    <input type="checkbox" disabled={userType !== 'employee'} checked={equipment.includes(item)} onChange={() => toggleEquipment(item)} className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                  <label key={item} className={`flex items-center space-x-3 text-sm font-bold ${(userType !== 'employee' && userType !== 'mcc') ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-gray-50'} p-2 rounded-xl transition-colors`}>
+                    <input type="checkbox" disabled={userType !== 'employee' && userType !== 'mcc'} checked={equipment.includes(item)} onChange={() => toggleEquipment(item)} className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                     <span>{item}</span>
                   </label>
                 ))}
@@ -1303,6 +1318,7 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
             <select value={newGroupType} onChange={(e)=>setNewGroupType(e.target.value)} className="border p-3 rounded-xl text-sm font-bold bg-white outline-none focus:border-indigo-500">
               <option value="external">一般・団体</option>
               <option value="employee">従業員</option>
+              <option value="mcc">会社の部活 (MCC)</option>
             </select>
             <button type="submit" className="bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold text-sm hover:bg-indigo-700 shadow-lg transition-all active:scale-95 whitespace-nowrap">追加</button>
           </form>
@@ -1313,8 +1329,8 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
                 <div key={g.id} className="flex justify-between items-center bg-indigo-50/50 p-3 rounded-xl border border-indigo-100">
                   <div className="flex flex-col">
                     <span className="text-sm font-bold text-gray-800">{g.name}</span>
-                    <span className={`text-[10px] font-black w-fit px-2 py-0.5 rounded uppercase mt-1 ${g.type === 'employee' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-                      {g.type === 'employee' ? '従業員' : '一般・団体'}
+                    <span className={`text-[10px] font-black w-fit px-2 py-0.5 rounded uppercase mt-1 ${g.type === 'mcc' ? 'bg-purple-100 text-purple-700' : g.type === 'employee' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                      {g.type === 'mcc' ? '会社の部活' : g.type === 'employee' ? '従業員' : '一般・団体'}
                     </span>
                   </div>
                   <button onClick={()=>handleDeleteGroup(g.id)} className="text-indigo-300 hover:text-red-600 p-2 transition-colors"><Trash2 className="h-4 w-4"/></button>
@@ -1519,6 +1535,14 @@ function RulesView() {
             <div className="bg-blue-50 p-8 rounded-[3rem] space-y-6 shadow-inner border-2 border-white">
               <p className="text-sm font-black text-blue-950 tracking-wide leading-none mb-4">利用者区分によって予約開始日が異なります。</p>
               
+              <div className="bg-white p-4 rounded-2xl border-2 border-purple-100 shadow-sm">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded font-black">会社の部活</span>
+                  <span className="text-sm font-bold text-gray-800">6ヶ月先まで予約可能</span>
+                </div>
+                <p className="text-[10px] text-gray-500">本日より6ヶ月先の同日までご予約いただけます。</p>
+              </div>
+
               <div className="bg-white p-4 rounded-2xl border-2 border-blue-100 shadow-sm">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded font-black">従業員</span>
