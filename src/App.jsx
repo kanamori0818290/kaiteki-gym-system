@@ -1030,19 +1030,20 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
                       <span className="text-[10px] bg-blue-100 px-2 py-0.5 rounded-full">選択中: {selectedCourts.length}/6</span>
                     </label>
                     <div className="grid grid-cols-1 gap-2 p-5 bg-gray-100 rounded-[2rem] shadow-inner border-2 border-white">
+                      {/* 順番変更：A,B,C（入口側）を上に */}
                       <div className="space-y-3">
-                        <p className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">用具側</p>
+                        <p className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">入口側</p>
                         <div className="flex space-x-3 justify-center">
-                          {['D', 'E', 'F'].map(c => (
+                          {['A', 'B', 'C'].map(c => (
                             <CourtButton key={c} label={c} active={selectedCourts.includes(c)} occupied={occupiedCourts.includes(c)} onClick={() => toggleCourt(c)} />
                           ))}
                         </div>
                       </div>
                       <div className="my-1 border-b border-gray-200 w-2/3 mx-auto"></div>
                       <div className="space-y-3">
-                        <p className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">入口側</p>
+                        <p className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">用具側</p>
                         <div className="flex space-x-3 justify-center">
-                          {['A', 'B', 'C'].map(c => (
+                          {['D', 'E', 'F'].map(c => (
                             <CourtButton key={c} label={c} active={selectedCourts.includes(c)} occupied={occupiedCourts.includes(c)} onClick={() => toggleCourt(c)} />
                           ))}
                         </div>
@@ -1406,6 +1407,7 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
   );
 }
 
+// --- 印刷用タイムラインビュー ---
 function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
   const weekStart = new Date(weekStartStr);
   const weekDays = Array.from({ length: 7 }, (_, i) => {
@@ -1413,9 +1415,17 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
     d.setDate(weekStart.getDate() + i);
     return formatDateStr(d);
   });
-  // 印刷画面も D~F（用具側）→ A~C（入口側）の順に変更
-  const courts = ['D', 'E', 'F', 'A', 'B', 'C'];
+  
   const closedDateStrs = closedDays.map(cd => cd.date);
+  const dayLabels = ['日','月','火','水','木','金','土'];
+
+  // 印刷時に背景色と線を強制出力するためのCSS
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.innerHTML = `@media print { * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } }`;
+    document.head.appendChild(style);
+    return () => document.head.removeChild(style);
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -1423,7 +1433,7 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
         <div className="flex items-center space-x-3">
           <Printer className="h-8 w-8 text-blue-600" />
           <div>
-            <h3 className="text-xl font-bold">週間予定表 印刷プレビュー</h3>
+            <h3 className="text-xl font-bold">週間予定表 印刷プレビュー (タイムライン形式)</h3>
             <p className="text-xs text-gray-500 font-bold">A3 / 横向き設定を推奨</p>
           </div>
         </div>
@@ -1432,81 +1442,106 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
           <button onClick={() => window.print()} className="bg-blue-600 text-white px-8 py-2.5 rounded-xl font-bold shadow-lg hover:bg-blue-700 transition-all">印刷する</button>
         </div>
       </div>
-      <div className="bg-white p-2 border-2 border-black min-h-[800px] font-sans text-xs">
+
+      <div className="bg-white p-4 min-h-[800px] font-sans">
         <div className="text-center mb-4">
           <h2 className="text-2xl font-bold border-b-2 border-black inline-block px-10 pb-1 uppercase tracking-widest">KAITEKI体育館 週間利用予定表</h2>
           <p className="text-sm font-bold mt-2">期間: {weekDays[0]} 〜 {weekDays[6]}</p>
         </div>
-        <table className="w-full border-collapse border-2 border-black text-[10px]">
+        
+        <table className="w-full border-collapse border border-gray-800 text-[9px]">
           <thead>
-            <tr className="bg-gray-100">
-              <th className="border-2 border-black p-2 w-16">コート</th>
-              {weekDays.map(d => {
-                const dateObj = new Date(d);
-                const dayLabels = ['日','月','火','水','木','金','土'];
-                return (
-                  <th key={d} className={`border-2 border-black p-2 text-center ${dateObj.getDay() === 0 ? 'text-red-500' : dateObj.getDay() === 6 ? 'text-blue-500' : ''}`}>
-                    {d.split('-')[1]}/{d.split('-')[2]} ({dayLabels[dateObj.getDay()]})
-                    {closedDateStrs.includes(d) && <div className="text-[8px] text-red-500 font-black">【休館日】</div>}
-                  </th>
-                );
-              })}
+            <tr className="bg-gray-200">
+              <th className="border border-gray-800 p-1 w-12">日付</th>
+              <th className="border border-gray-800 p-1 w-24">施設 / コート</th>
+              {TIME_SLOTS.map(t => (
+                <th key={t} className="border border-gray-800 p-0.5 w-[3%]">
+                  {t.replace(/^0/, '')}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {courts.map(c => (
-              <tr key={c} className="h-28">
-                <td className="border-2 border-black p-2 text-center font-bold bg-gray-50 text-base">
-                  {c}<br/><span className="text-[8px] text-gray-400 font-normal">{(['A','B','C'].includes(c)) ? '入口側' : '用具側'}</span>
-                </td>
-                {weekDays.map(d => {
-                  const isClosed = closedDateStrs.includes(d);
-                  const dayCourts = reservations
-                    .filter(r => r.date === d && r.place.includes('体育館') && r.courts && r.courts.includes(c) && r.status !== 'cancelled')
-                    .sort((a,b)=>a.startTime.localeCompare(b.startTime));
-                  return (
-                    <td key={d} className={`border-2 border-black p-1 align-top relative ${isClosed ? 'bg-gray-100' : ''}`}>
-                      {isClosed ? <div className="flex items-center justify-center h-full"><Ban className="w-8 h-8 text-gray-300" /></div> : (
-                        <div className="space-y-1">
-                          {dayCourts.map(res => (
-                            <div key={res.id} className="border border-gray-300 p-1 rounded bg-gray-50/50 leading-tight">
-                              <div className="font-bold text-blue-900 border-b border-gray-200 mb-1">{res.startTime}-{res.endTime}</div>
-                              <div className="font-bold">{res.name} {res.userCount ? `(${res.userCount}名)` : ''}</div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-            <tr className="h-24">
-              <td className="border-2 border-black p-2 text-center font-bold bg-gray-50 text-sm">多目的室</td>
-              {weekDays.map(d => {
-                  const isClosed = closedDateStrs.includes(d);
-                  const rooms = reservations
-                    .filter(r => r.date === d && r.place.includes('多目的室') && r.status !== 'cancelled')
-                    .sort((a,b)=>a.startTime.localeCompare(b.startTime));
-                  return (
-                    <td key={d} className={`border-2 border-black p-1 align-top ${isClosed ? 'bg-gray-100' : ''}`}>
-                      {isClosed ? <div className="flex items-center justify-center h-full text-gray-300 font-bold uppercase tracking-widest text-[8px]">Closed</div> : (
-                        <div className="space-y-1">
-                          {rooms.map(res => (
-                            <div key={res.id} className="border border-gray-300 p-1 rounded bg-gray-50/50 leading-tight">
-                              <div className="font-bold text-green-800 border-b border-gray-200 mb-1">{res.startTime}-{res.endTime}</div>
-                              <div className="font-bold">{res.name} {res.userCount ? `(${res.userCount}名)` : ''}</div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </td>
-                  );
-              })}
-            </tr>
+            {weekDays.map(d => {
+              const dateObj = new Date(d);
+              const isClosed = closedDateStrs.includes(d);
+              const dayLabel = `${d.split('-')[1]}/${d.split('-')[2]} (${dayLabels[dateObj.getDay()]})`;
+              const dayColor = dateObj.getDay() === 0 ? 'text-red-600' : dateObj.getDay() === 6 ? 'text-blue-600' : 'text-gray-900';
+
+              return (
+                <React.Fragment key={d}>
+                  {RESOURCES.map((res, rIndex) => {
+                    return (
+                      <tr key={`${d}-${res.id}`}>
+                        {/* 日付セルを結合 */}
+                        {rIndex === 0 && (
+                          <td rowSpan={RESOURCES.length} className={`border border-gray-800 p-1 text-center font-bold bg-gray-50 ${dayColor} whitespace-nowrap`}>
+                            {dayLabel}
+                            {isClosed && <div className="text-[8px] text-red-500 mt-1 font-black">休館日</div>}
+                          </td>
+                        )}
+                        <td className="border border-gray-800 p-1 font-bold bg-gray-50 text-gray-700 whitespace-nowrap text-center">
+                          {res.id === '多目的室' ? res.name : `コート${res.id} `}
+                          {res.id !== '多目的室' && <span className="text-[7px] text-gray-400">({['A','B','C'].includes(res.id) ? '入口' : '用具'})</span>}
+                        </td>
+                        
+                        {/* タイムラインのセル */}
+                        {TIME_SLOTS.map((t, cIndex) => {
+                          const start = t;
+                          const end = END_TIMES[cIndex];
+
+                          if (isClosed) {
+                            return <td key={t} className="border border-gray-400 bg-gray-200/50 bg-[repeating-linear-gradient(45deg,transparent,transparent_2px,rgba(0,0,0,0.1)_2px,rgba(0,0,0,0.1)_4px)]"></td>;
+                          }
+
+                          const matchingRes = reservations.find(r => {
+                            if (r.date !== d || r.status === 'cancelled') return false;
+                            if (!isTimeOverlapping(start, end, r.startTime, r.endTime)) return false;
+                            if (res.type === '体育館' && r.place.includes('体育館') && r.courts && r.courts.includes(res.id)) return true;
+                            if (res.type === '多目的室' && r.place.includes('多目的室')) return true;
+                            return false;
+                          });
+
+                          if (matchingRes) {
+                            // 開始時間が含まれているか、または8:30開始より前だがこの枠が最初の枠の場合
+                            const isStartCell = (matchingRes.startTime >= start && matchingRes.startTime < end) || (cIndex === 0 && matchingRes.startTime < start);
+                            const bgColor = matchingRes.userType === 'mcc' ? 'bg-purple-200' : matchingRes.userType === 'employee' ? 'bg-blue-200' : 'bg-green-200';
+                            const borderColor = matchingRes.userType === 'mcc' ? 'border-purple-400' : matchingRes.userType === 'employee' ? 'border-blue-400' : 'border-green-400';
+                            
+                            return (
+                              <td key={t} className={`border-y border-r ${borderColor} ${bgColor} p-0 min-w-[30px] max-w-[30px]`}>
+                                {isStartCell ? (
+                                  <div className="w-full h-full px-0.5 flex items-center overflow-hidden">
+                                    <span className="font-bold text-[7px] truncate text-gray-800 leading-none">
+                                      {matchingRes.name}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <div className="w-full h-full"></div>
+                                )}
+                              </td>
+                            );
+                          }
+
+                          return <td key={t} className="border border-gray-300"></td>;
+                        })}
+                      </tr>
+                    );
+                  })}
+                </React.Fragment>
+              );
+            })}
           </tbody>
         </table>
-        <div className="mt-4 flex justify-between items-end text-[10px] font-bold text-gray-400">
+        
+        {/* 印刷用の凡例 */}
+        <div className="mt-4 flex justify-between items-end text-[10px] font-bold text-gray-600">
+          <div className="flex space-x-4">
+            <span className="flex items-center"><span className="w-3 h-3 bg-purple-200 border border-purple-400 inline-block mr-1"></span>会社の部活</span>
+            <span className="flex items-center"><span className="w-3 h-3 bg-blue-200 border border-blue-400 inline-block mr-1"></span>従業員</span>
+            <span className="flex items-center"><span className="w-3 h-3 bg-green-200 border border-green-400 inline-block mr-1"></span>一般・団体</span>
+            <span className="flex items-center"><span className="w-3 h-3 bg-gray-200 border border-gray-400 bg-[repeating-linear-gradient(45deg,transparent,transparent_2px,rgba(0,0,0,0.1)_2px,rgba(0,0,0,0.1)_4px)] inline-block mr-1"></span>休館</span>
+          </div>
           <div>出力日時: {new Date().toLocaleString()}</div>
         </div>
       </div>
