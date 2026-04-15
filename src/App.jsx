@@ -1031,20 +1031,20 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
                       <span className="text-[10px] bg-blue-100 px-2 py-0.5 rounded-full">選択中: {selectedCourts.length}/6</span>
                     </label>
                     <div className="grid grid-cols-1 gap-2 p-5 bg-gray-100 rounded-[2rem] shadow-inner border-2 border-white">
-                      {/* 順番変更：A,B,C（入口側）を上に */}
+                      {/* 順番変更：D,E,F（用具側）を上に */}
                       <div className="space-y-3">
-                        <p className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">入口側</p>
+                        <p className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">用具側</p>
                         <div className="flex space-x-3 justify-center">
-                          {['A', 'B', 'C'].map(c => (
+                          {['D', 'E', 'F'].map(c => (
                             <CourtButton key={c} label={c} active={selectedCourts.includes(c)} occupied={occupiedCourts.includes(c)} onClick={() => toggleCourt(c)} />
                           ))}
                         </div>
                       </div>
                       <div className="my-1 border-b border-gray-200 w-2/3 mx-auto"></div>
                       <div className="space-y-3">
-                        <p className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">用具側</p>
+                        <p className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">入口側</p>
                         <div className="flex space-x-3 justify-center">
-                          {['D', 'E', 'F'].map(c => (
+                          {['A', 'B', 'C'].map(c => (
                             <CourtButton key={c} label={c} active={selectedCourts.includes(c)} occupied={occupiedCourts.includes(c)} onClick={() => toggleCourt(c)} />
                           ))}
                         </div>
@@ -1417,7 +1417,7 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
     return formatDateStr(d);
   });
   
-  const courts = ['A', 'B', 'C', 'D', 'E', 'F'];
+  const courts = ['D', 'E', 'F', 'A', 'B', 'C'];
   const closedDateStrs = closedDays.map(cd => cd.date);
   const dayLabels = ['日','月','火','水','木','金','土'];
 
