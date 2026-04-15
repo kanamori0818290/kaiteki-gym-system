@@ -447,7 +447,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-gray-800">
-      <header className="bg-blue-800 text-white shadow-md sticky top-0 z-40 no-print">
+      <header className="bg-blue-800 text-white shadow-md sticky top-0 z-40 print:hidden">
         <div className="max-w-6xl mx-auto px-4 py-3 flex flex-col sm:flex-row justify-between items-center">
           <div className="flex items-center space-x-3 mb-2 sm:mb-0">
             <Building className="h-8 w-8 text-blue-200" />
@@ -477,14 +477,15 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-6 relative min-h-[500px]">
+      {/* 印刷時はコンテナの余白をなくし、最大幅制限を解除 */}
+      <main className="max-w-6xl mx-auto px-4 py-6 relative min-h-[500px] print:max-w-none print:px-0 print:py-0 print:m-0">
         {isLoading ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-50 bg-opacity-75 z-10 py-20">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-50 bg-opacity-75 z-10 py-20 print:hidden">
             <Loader2 className="h-10 w-10 text-blue-600 animate-spin mb-4" />
             <p className="text-base font-bold text-gray-500">読み込み中...</p>
           </div>
         ) : (
-          <div className="w-full space-y-8">
+          <div className="w-full space-y-8 print:space-y-0">
             {activeTab === 'calendar' && (
               <CalendarView 
                 reservations={reservations} 
@@ -510,7 +511,7 @@ export default function App() {
       </main>
 
       {showLoginModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm no-print">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm print:hidden">
           <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-sm">
             <h3 className="text-xl font-bold mb-6 flex items-center text-blue-800"><Lock className="mr-3 h-6 w-6"/>管理者ログイン</h3>
             <form onSubmit={handleAdminLogin}>
@@ -525,7 +526,7 @@ export default function App() {
       )}
 
       {toastMessage && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-8 py-3 rounded-full shadow-2xl flex items-center space-x-3 animate-in slide-in-from-bottom-10 z-50 no-print">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-8 py-3 rounded-full shadow-2xl flex items-center space-x-3 animate-in slide-in-from-bottom-10 z-50 print:hidden">
           <CheckSquare className="h-5 w-5 text-green-400" />
           <span className="text-sm font-bold">{toastMessage}</span>
         </div>
@@ -1297,7 +1298,7 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
   }
 
   return (
-    <div className="space-y-12 animate-in fade-in duration-500 max-w-5xl mx-auto py-4 no-print">
+    <div className="space-y-12 animate-in fade-in duration-500 max-w-5xl mx-auto py-4 print:hidden">
       <div className="flex flex-col md:flex-row md:items-end justify-between border-b-2 pb-6 border-blue-100 gap-4">
         <div>
           <h2 className="text-3xl font-black flex items-center text-blue-950 tracking-tight">
@@ -1416,25 +1417,33 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
     return formatDateStr(d);
   });
   
+  const courts = ['A', 'B', 'C', 'D', 'E', 'F'];
   const closedDateStrs = closedDays.map(cd => cd.date);
   const dayLabels = ['日','月','火','水','木','金','土'];
 
   // 印刷時に背景色と線を強制出力するためのCSS
+  // @page { size: landscape; } を追加し、印刷ダイアログで最初から横向きになるように設定
   useEffect(() => {
     const style = document.createElement('style');
-    style.innerHTML = `@media print { * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } }`;
+    style.innerHTML = `
+      @page { size: landscape; margin: 10mm; }
+      @media print { 
+        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } 
+        body { background-color: white !important; }
+      }
+    `;
     document.head.appendChild(style);
     return () => document.head.removeChild(style);
   }, []);
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center no-print bg-white p-6 rounded-2xl shadow-xl border-2 border-blue-100">
+    <div className="space-y-6 print:space-y-0">
+      <div className="flex justify-between items-center print:hidden bg-white p-6 rounded-2xl shadow-xl border-2 border-blue-100">
         <div className="flex items-center space-x-3">
           <Printer className="h-8 w-8 text-blue-600" />
           <div>
             <h3 className="text-xl font-bold">週間予定表 印刷プレビュー (タイムライン形式)</h3>
-            <p className="text-xs text-gray-500 font-bold">A3 / 横向き設定を推奨</p>
+            <p className="text-xs text-gray-500 font-bold">自動的に横向きで印刷されます。</p>
           </div>
         </div>
         <div className="flex space-x-3">
@@ -1443,19 +1452,19 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
         </div>
       </div>
 
-      <div className="bg-white p-4 min-h-[800px] font-sans">
+      <div className="bg-white p-4 min-h-[800px] font-sans print:p-0 print:min-h-0 print:shadow-none print:border-none">
         <div className="text-center mb-4">
           <h2 className="text-2xl font-bold border-b-2 border-black inline-block px-10 pb-1 uppercase tracking-widest">KAITEKI体育館 週間利用予定表</h2>
           <p className="text-sm font-bold mt-2">期間: {weekDays[0]} 〜 {weekDays[6]}</p>
         </div>
         
-        <table className="w-full border-collapse border border-gray-800 text-[9px]">
+        <table className="w-full table-fixed border-collapse border border-gray-800 text-[10px]">
           <thead>
             <tr className="bg-gray-200">
-              <th className="border border-gray-800 p-1 w-12">日付</th>
-              <th className="border border-gray-800 p-1 w-24">施設 / コート</th>
+              <th className="border border-gray-800 p-1 w-[8%]">日付</th>
+              <th className="border border-gray-800 p-1 w-[12%]">施設 / コート</th>
               {TIME_SLOTS.map(t => (
-                <th key={t} className="border border-gray-800 p-0.5 w-[3%]">
+                <th key={t} className="border border-gray-800 p-0.5 font-mono text-[8px] sm:text-[9px]">
                   {t.replace(/^0/, '')}
                 </th>
               ))}
@@ -1486,45 +1495,62 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                         </td>
                         
                         {/* タイムラインのセル */}
-                        {TIME_SLOTS.map((t, cIndex) => {
-                          const start = t;
-                          const end = END_TIMES[cIndex];
+                        {(() => {
+                          const cells = [];
+                          let cIndex = 0;
+                          while (cIndex < TIME_SLOTS.length) {
+                            const start = TIME_SLOTS[cIndex];
+                            const end = END_TIMES[cIndex];
 
-                          if (isClosed) {
-                            return <td key={t} className="border border-gray-400 bg-gray-200/50 bg-[repeating-linear-gradient(45deg,transparent,transparent_2px,rgba(0,0,0,0.1)_2px,rgba(0,0,0,0.1)_4px)]"></td>;
-                          }
+                            if (isClosed) {
+                              cells.push(<td key={start} className="border border-gray-400 bg-gray-200/50 bg-[repeating-linear-gradient(45deg,transparent,transparent_2px,rgba(0,0,0,0.1)_2px,rgba(0,0,0,0.1)_4px)]"></td>);
+                              cIndex++;
+                              continue;
+                            }
 
-                          const matchingRes = reservations.find(r => {
-                            if (r.date !== d || r.status === 'cancelled') return false;
-                            if (!isTimeOverlapping(start, end, r.startTime, r.endTime)) return false;
-                            if (res.type === '体育館' && r.place.includes('体育館') && r.courts && r.courts.includes(res.id)) return true;
-                            if (res.type === '多目的室' && r.place.includes('多目的室')) return true;
-                            return false;
-                          });
+                            const matchingRes = reservations.find(r => {
+                              if (r.date !== d || r.status === 'cancelled') return false;
+                              if (!isTimeOverlapping(start, end, r.startTime, r.endTime)) return false;
+                              if (res.type === '体育館' && r.place.includes('体育館') && r.courts && r.courts.includes(res.id)) return true;
+                              if (res.type === '多目的室' && r.place.includes('多目的室')) return true;
+                              return false;
+                            });
 
-                          if (matchingRes) {
-                            // 開始時間が含まれているか、または8:30開始より前だがこの枠が最初の枠の場合
-                            const isStartCell = (matchingRes.startTime >= start && matchingRes.startTime < end) || (cIndex === 0 && matchingRes.startTime < start);
-                            const bgColor = matchingRes.userType === 'mcc' ? 'bg-purple-200' : matchingRes.userType === 'employee' ? 'bg-blue-200' : 'bg-green-200';
-                            const borderColor = matchingRes.userType === 'mcc' ? 'border-purple-400' : matchingRes.userType === 'employee' ? 'border-blue-400' : 'border-green-400';
-                            
-                            return (
-                              <td key={t} className={`border-y border-r ${borderColor} ${bgColor} p-0 min-w-[30px] max-w-[30px]`}>
-                                {isStartCell ? (
-                                  <div className="w-full h-full px-0.5 flex items-center overflow-hidden">
-                                    <span className="font-bold text-[7px] truncate text-gray-800 leading-none">
+                            if (matchingRes) {
+                              // 連続するスロットをカウント
+                              let span = 1;
+                              let nextIndex = cIndex + 1;
+                              while (nextIndex < TIME_SLOTS.length) {
+                                const nextStart = TIME_SLOTS[nextIndex];
+                                const nextEnd = END_TIMES[nextIndex];
+                                if (isTimeOverlapping(nextStart, nextEnd, matchingRes.startTime, matchingRes.endTime)) {
+                                  span++;
+                                  nextIndex++;
+                                } else {
+                                  break;
+                                }
+                              }
+
+                              const bgColor = matchingRes.userType === 'mcc' ? 'bg-purple-200' : matchingRes.userType === 'employee' ? 'bg-blue-200' : 'bg-green-200';
+                              const borderColor = matchingRes.userType === 'mcc' ? 'border-purple-400' : matchingRes.userType === 'employee' ? 'border-blue-400' : 'border-green-400';
+                              
+                              cells.push(
+                                <td key={start} colSpan={span} className={`border border-gray-800 ${bgColor} p-0 relative`}>
+                                  <div className="absolute inset-0 flex items-center justify-center p-1 overflow-hidden">
+                                    <span className={`font-bold text-gray-800 leading-tight text-center break-words ${span > 1 ? 'text-[9px]' : 'text-[7px]'}`}>
                                       {matchingRes.name}
                                     </span>
                                   </div>
-                                ) : (
-                                  <div className="w-full h-full"></div>
-                                )}
-                              </td>
-                            );
+                                </td>
+                              );
+                              cIndex += span;
+                            } else {
+                              cells.push(<td key={start} className="border border-gray-300"></td>);
+                              cIndex++;
+                            }
                           }
-
-                          return <td key={t} className="border border-gray-300"></td>;
-                        })}
+                          return cells;
+                        })()}
                       </tr>
                     );
                   })}
