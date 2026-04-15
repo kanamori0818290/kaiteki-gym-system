@@ -79,14 +79,14 @@ const END_TIMES = [
   "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30",
   "17:00", "17:30", "18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00"
 ];
-// コートの並び順を用具側(D,E,F) → 入口側(A,B,C) に変更
+// コートの並び順を用具側(A,B,C) → 入口側(D,E,F) に変更
 const RESOURCES = [
-  { id: 'D', name: 'コートD (用具側)', type: '体育館' },
-  { id: 'E', name: 'コートE (用具側)', type: '体育館' },
-  { id: 'F', name: 'コートF (用具側)', type: '体育館' },
-  { id: 'A', name: 'コートA (入口側)', type: '体育館' },
-  { id: 'B', name: 'コートB (入口側)', type: '体育館' },
-  { id: 'C', name: 'コートC (入口側)', type: '体育館' },
+  { id: 'A', name: 'コートA (用具側)', type: '体育館' },
+  { id: 'B', name: 'コートB (用具側)', type: '体育館' },
+  { id: 'C', name: 'コートC (用具側)', type: '体育館' },
+  { id: 'D', name: 'コートD (入口側)', type: '体育館' },
+  { id: 'E', name: 'コートE (入口側)', type: '体育館' },
+  { id: 'F', name: 'コートF (入口側)', type: '体育館' },
   { id: '多目的室', name: '多目的室', type: '多目的室' },
 ];
 
@@ -1031,11 +1031,11 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
                       <span className="text-[10px] bg-blue-100 px-2 py-0.5 rounded-full">選択中: {selectedCourts.length}/6</span>
                     </label>
                     <div className="grid grid-cols-1 gap-2 p-5 bg-gray-100 rounded-[2rem] shadow-inner border-2 border-white">
-                      {/* 順番変更：D,E,F（用具側）を上に */}
+                      {/* 順番変更：A,B,C（用具側）を上に */}
                       <div className="space-y-3">
                         <p className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">用具側</p>
                         <div className="flex space-x-3 justify-center">
-                          {['D', 'E', 'F'].map(c => (
+                          {['A', 'B', 'C'].map(c => (
                             <CourtButton key={c} label={c} active={selectedCourts.includes(c)} occupied={occupiedCourts.includes(c)} onClick={() => toggleCourt(c)} />
                           ))}
                         </div>
@@ -1044,7 +1044,7 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
                       <div className="space-y-3">
                         <p className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">入口側</p>
                         <div className="flex space-x-3 justify-center">
-                          {['A', 'B', 'C'].map(c => (
+                          {['D', 'E', 'F'].map(c => (
                             <CourtButton key={c} label={c} active={selectedCourts.includes(c)} occupied={occupiedCourts.includes(c)} onClick={() => toggleCourt(c)} />
                           ))}
                         </div>
@@ -1417,7 +1417,8 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
     return formatDateStr(d);
   });
   
-  const courts = ['D', 'E', 'F', 'A', 'B', 'C'];
+  // 印刷画面も A~C（用具側）→ D~F（入口側）の順に変更
+  const courts = ['A', 'B', 'C', 'D', 'E', 'F'];
   const closedDateStrs = closedDays.map(cd => cd.date);
   const dayLabels = ['日','月','火','水','木','金','土'];
 
@@ -1491,7 +1492,7 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                         )}
                         <td className="border border-gray-800 p-1 font-bold bg-gray-50 text-gray-700 whitespace-nowrap text-center">
                           {res.id === '多目的室' ? res.name : `コート${res.id} `}
-                          {res.id !== '多目的室' && <span className="text-[7px] text-gray-400">({['A','B','C'].includes(res.id) ? '入口' : '用具'})</span>}
+                          {res.id !== '多目的室' && <span className="text-[7px] text-gray-400">({['A','B','C'].includes(res.id) ? '用具側' : '入口側'})</span>}
                         </td>
                         
                         {/* タイムラインのセル */}
