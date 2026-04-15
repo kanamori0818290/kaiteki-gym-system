@@ -18,42 +18,41 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'kaiteki-gym-production';
+const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'kaiteki-gym-production-v2';
 const safeAppId = String(rawAppId).replace(/\//g, '-');
 
 // --- セキュリティ用パスワード設定 ---
 const PORTAL_PASSWORD = "kaiteki-user";
 const ADMIN_PASSWORD = "admin123";
-const ADMIN_CC_EMAIL = "MCJP-DG-RIX_TOYAMA_TAIIKUKAN@mchcgr.com";
 
-// --- 初期登録団体リスト ---
+// --- 初期登録団体リスト（authIdを追加） ---
 const INITIAL_GROUPS = [
   // 会社の部活（次年度の3/31まで）
-  { name: 'MCCバレー', type: 'mcc' },
-  { name: 'MCC卓球', type: 'mcc' },
-  { name: 'MCCバドミントン', type: 'mcc' },
+  { name: 'MCCバレー', type: 'mcc', authId: 'M1001' },
+  { name: 'MCC卓球', type: 'mcc', authId: 'M1002' },
+  { name: 'MCCバドミントン', type: 'mcc', authId: 'M1003' },
   // 従業員利用（3ヶ月先まで）
-  { name: '佐野（富山北FC）', type: 'employee' },
-  { name: '朝岡（FC ALVA)', type: 'employee' },
-  { name: '斉藤（和合ハンドボール）', type: 'employee' },
-  { name: '斉藤（ターミガンズ ジュニア）', type: 'employee' },
-  { name: '金森（ピックルボール富山）', type: 'employee' },
-  { name: '金森（神明フレッシュテニス）', type: 'employee' },
-  { name: '亀畑', type: 'employee' },
-  { name: '林田（hayashuda)', type: 'employee' },
-  { name: '吉岡（富山ドリームズ）', type: 'employee' },
-  { name: '梅田', type: 'employee' },
-  { name: '古金(BC)', type: 'employee' },
+  { name: '佐野（富山北FC）', type: 'employee', authId: 'E1001' },
+  { name: '朝岡（FC ALVA)', type: 'employee', authId: 'E1002' },
+  { name: '斉藤（和合ハンドボール）', type: 'employee', authId: 'E1003' },
+  { name: '斉藤（ターミガンズ ジュニア）', type: 'employee', authId: 'E1004' },
+  { name: '金森（ピックルボール富山）', type: 'employee', authId: 'E1005' },
+  { name: '金森（神明フレッシュテニス）', type: 'employee', authId: 'E1006' },
+  { name: '亀畑', type: 'employee', authId: 'E1007' },
+  { name: '林田（hayashuda)', type: 'employee', authId: 'E1008' },
+  { name: '吉岡（富山ドリームズ）', type: 'employee', authId: 'E1009' },
+  { name: '梅田', type: 'employee', authId: 'E1010' },
+  { name: '古金(BC)', type: 'employee', authId: 'E1011' },
   // 一般・外部（2ヶ月先まで）
-  { name: 'BRABBTS', type: 'external' },
-  { name: '富山ダルク', type: 'external' },
-  { name: 'Rey華繚乱', type: 'external' },
-  { name: 'SDバスケ', type: 'external' },
-  { name: '岩瀬中バスケ', type: 'external' },
-  { name: '富山北FC', type: 'external' },
-  { name: 'HAGIURAバレー', type: 'external' },
-  { name: '富山北部VC', type: 'external' },
-  { name: '北中女子ソフトテニス部', type: 'external' }
+  { name: 'BRABBTS', type: 'external', authId: 'G1001' },
+  { name: '富山ダルク', type: 'external', authId: 'G1002' },
+  { name: 'Rey華繚乱', type: 'external', authId: 'G1003' },
+  { name: 'SDバスケ', type: 'external', authId: 'G1004' },
+  { name: '岩瀬中バスケ', type: 'external', authId: 'G1005' },
+  { name: '富山北FC', type: 'external', authId: 'G1006' },
+  { name: 'HAGIURAバレー', type: 'external', authId: 'G1007' },
+  { name: '富山北部VC', type: 'external', authId: 'G1008' },
+  { name: '北中女子ソフトテニス部', type: 'external', authId: 'G1009' }
 ];
 
 // --- 貸出備品（全団体・個人共通で利用可能） ---
@@ -79,7 +78,7 @@ const END_TIMES = [
   "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30",
   "17:00", "17:30", "18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00"
 ];
-// コートの並び順を用具側(A,B,C) → 入口側(D,E,F) に変更
+// コートの並び順
 const RESOURCES = [
   { id: 'A', name: 'コートA (用具側)', type: '体育館' },
   { id: 'B', name: 'コートB (用具側)', type: '体育館' },
@@ -503,7 +502,7 @@ export default function App() {
                 onSuccess={(msg) => {showToast(msg || '予約が完了しました。'); setActiveTab('calendar');}} 
               />
             )}
-            {activeTab === 'cancel' && <CancelView reservations={reservations} onSuccess={() => { showToast('予約をキャンセルしました'); setActiveTab('calendar'); }} />}
+            {activeTab === 'cancel' && <CancelView reservations={reservations} groups={groups} onSuccess={() => { showToast('予約をキャンセルしました'); setActiveTab('calendar'); }} />}
             {activeTab === 'rules' && <RulesView />}
             {activeTab === 'admin' && isAdmin && <AdminDashboard reservations={reservations} closedDays={closedDays} groups={groups} onStatusUpdate={() => showToast('更新しました')} />}
           </div>
@@ -660,10 +659,11 @@ function CalendarView({ reservations, closedDays, onReserveClick }) {
 }
 
 function ReservationForm({ initialDate, reservations, closedDays, groups, user, onSuccess }) {
+  const [authIdInput, setAuthIdInput] = useState('');
   const [userType, setUserType] = useState(''); 
   const [selectedDate, setSelectedDate] = useState(initialDate || '');
   const [formData, setFormData] = useState({ 
-    groupId: '', name: '', repName: '', email: '', phone: '', startTime: '', endTime: '', purpose: '', deletePass: '', userCount: ''
+    groupId: '', name: '', startTime: '', endTime: '', purpose: '', deletePass: '', userCount: ''
   });
   const [selectedFacilities, setSelectedFacilities] = useState(['体育館']);
   const [selectedCourts, setSelectedCourts] = useState([]);
@@ -672,6 +672,18 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
   
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringEndDate, setRecurringEndDate] = useState('');
+
+  // 認証IDが入力されるたびにグループを検索して設定
+  useEffect(() => {
+    const g = groups.find(group => group.authId === authIdInput.trim());
+    if (g) {
+      setFormData(prev => ({...prev, groupId: g.id, name: g.name}));
+      setUserType(g.type);
+    } else {
+      setFormData(prev => ({...prev, groupId: '', name: ''}));
+      setUserType('');
+    }
+  }, [authIdInput, groups]);
 
   const closedDateStrs = useMemo(() => closedDays.map(cd => cd.date), [closedDays]);
   const isSelectedDateClosed = closedDateStrs.includes(selectedDate);
@@ -741,7 +753,7 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!user) return alert("認証エラーです");
-    if (!formData.groupId) return alert("利用団体を選択してください。");
+    if (!formData.groupId) return alert("有効な団体認証IDを入力してください。");
     if (selectedFacilities.length === 0) return alert("利用する施設を選択してください。");
     if (!formData.deletePass) return alert("取り消し用パスワードを設定してください。");
     
@@ -815,10 +827,6 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
 
       // 既存の「同月・同団体」の予約を取得（キャンセル済みも含めて集計する！）
       const existingResInMonth = reservations.filter(r => {
-        // 「個人利用」の場合は、団体名＋代表者名でユニーク判定して集計する
-        if (formData.name.includes('個人')) {
-          return r.name === formData.name && r.repName === formData.repName && r.date.startsWith(monthStr);
-        }
         return r.groupId === formData.groupId && r.date.startsWith(monthStr);
       });
       
@@ -885,52 +893,60 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
         <div className="bg-blue-600 text-white p-2.5 rounded-2xl mr-4 shadow-lg"><FileText className="h-7 w-7" /></div>
         施設利用申し込み
       </h2>
+
+      {/* 個人情報不要の案内文 */}
+      <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-2xl shadow-sm text-sm text-blue-900">
+        <p className="font-bold flex items-center mb-1"><Info className="w-5 h-5 mr-2" /> セキュリティと利便性に関するお知らせ</p>
+        <p className="leading-relaxed">
+          当システムでは個人情報の保護のため、氏名や電話番号、メールアドレスの入力を廃止いたしました。<br/>
+          ご予約には、事前に登録された<strong>「団体認証ID」</strong>が必要です。
+        </p>
+        <p className="mt-2 text-xs font-bold bg-white p-2 rounded border border-blue-100 inline-block">
+          💡 家族利用や新規利用をご希望の方は、管理部署（DRIXまたは総務）までご連絡いただき、専用の団体IDの発行をご依頼ください。
+        </p>
+      </div>
       
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white p-8 rounded-3xl border shadow-lg space-y-6 h-fit">
-          <h3 className="font-bold border-b-2 border-blue-50 pb-3 flex items-center text-blue-900 text-lg tracking-tight"><Users className="h-6 w-6 mr-3 text-blue-500"/> ① 利用者情報</h3>
+          <h3 className="font-bold border-b-2 border-blue-50 pb-3 flex items-center text-blue-900 text-lg tracking-tight"><Users className="h-6 w-6 mr-3 text-blue-500"/> ① 団体認証</h3>
           
           <div className="space-y-4">
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3">利用団体 *</label>
-              <select
-                required
-                value={formData.groupId}
-                onChange={(e) => {
-                  const g = groups.find(group => group.id === e.target.value);
-                  if (g) {
-                    setFormData({...formData, groupId: g.id, name: g.name});
-                    setUserType(g.type);
-                  } else {
-                    setFormData({...formData, groupId: '', name: ''});
-                    setUserType('');
-                  }
-                }}
-                className="bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white p-3.5 rounded-2xl w-full text-base font-bold outline-none transition-all shadow-inner text-gray-800"
-              >
-                <option value="">-- 事前登録された団体を選択 --</option>
-                {groups.map(g => (
-                  <option key={g.id} value={g.id}>{g.name}</option>
-                ))}
-              </select>
+            <div className="space-y-1 relative">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3">団体認証IDを入力 *</label>
+              <div className="relative">
+                <Key className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="password"
+                  required
+                  placeholder="IDを入力"
+                  value={authIdInput}
+                  onChange={(e) => setAuthIdInput(e.target.value)}
+                  className="bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white p-3.5 pl-12 rounded-2xl w-full text-base font-bold outline-none transition-all shadow-inner text-gray-800 tracking-widest"
+                />
+              </div>
             </div>
 
-            {userType && (
-              <div className="flex items-center gap-2 px-3 py-1 animate-in fade-in">
-                <span className={`text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider ${userType === 'mcc' ? 'bg-purple-100 text-purple-700' : userType === 'employee' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-                  {userType === 'mcc' ? '会社の部活 (次年度3月末まで可)' : userType === 'employee' ? '従業員 (3ヶ月先まで予約可)' : '一般・団体 (2ヶ月先まで予約可)'}
-                </span>
+            {formData.name ? (
+              <div className="bg-green-50 border-2 border-green-200 p-4 rounded-2xl animate-in fade-in zoom-in-95">
+                <p className="text-[10px] font-bold text-green-600 uppercase tracking-widest mb-1 flex items-center"><Check className="w-3 h-3 mr-1" /> 認証成功</p>
+                <p className="text-lg font-black text-green-900">{formData.name}</p>
+                <div className="mt-2">
+                  <span className={`text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider ${userType === 'mcc' ? 'bg-purple-100 text-purple-700' : userType === 'employee' ? 'bg-blue-100 text-blue-700' : 'bg-green-200 text-green-800'}`}>
+                    {userType === 'mcc' ? '会社の部活 (次年度3月末まで可)' : userType === 'employee' ? '従業員 (3ヶ月先まで予約可)' : '一般・団体 (2ヶ月先まで予約可)'}
+                  </span>
+                </div>
               </div>
-            )}
+            ) : authIdInput.length > 0 ? (
+              <div className="bg-red-50 p-3 rounded-xl text-red-600 text-xs font-bold flex items-center">
+                <AlertTriangle className="w-4 h-4 mr-2" /> 無効なIDです。
+              </div>
+            ) : null}
 
-            <InputField label="利用責任者氏名 *" value={formData.repName} onChange={(v)=>setFormData({...formData, repName:v})} placeholder="代表者名" />
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-100">
               <InputField label="使用人数 *" type="number" value={formData.userCount} onChange={(v)=>setFormData({...formData, userCount:v})} placeholder="名" />
               <InputField label="取消用パスワード *" type="password" value={formData.deletePass} onChange={(v)=>setFormData({...formData, deletePass:v})} placeholder="数字4桁など" />
             </div>
-            <InputField label="メール *" type="email" value={formData.email} onChange={(v)=>setFormData({...formData, email:v})} placeholder="example@email.com" />
-            <InputField label="緊急連絡先 *" type="tel" value={formData.phone} onChange={(v)=>setFormData({...formData, phone:v})} placeholder="090-XXXX-XXXX" />
-            <p className="text-[9px] text-gray-400 font-bold px-2">※取消用パスワードは予約の取り消しに必要です。</p>
+            <p className="text-[9px] text-gray-400 font-bold px-2">※取消用パスワードは、後でこの予約をキャンセルする際に必要になります。</p>
           </div>
         </div>
 
@@ -1093,22 +1109,30 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
   );
 }
 
-function CancelView({ reservations, onSuccess }) {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filteredResults, setFilteredResults] = useState([]);
+function CancelView({ reservations, groups, onSuccess }) {
+  const [authIdInput, setAuthIdInput] = useState('');
+  const [targetGroup, setTargetGroup] = useState(null);
+  
   const [inputDeletePass, setInputDeletePass] = useState('');
 
+  // IDから自団体を検索
   const handleSearch = (e) => {
     e.preventDefault();
-    if (!searchTerm.trim()) return;
-    const results = reservations.filter(res => 
-      res.status !== 'cancelled' && 
-      ((res.phone && res.phone.includes(searchTerm)) || 
-       (res.repName && res.repName.includes(searchTerm)) || 
-       (res.name && res.name.includes(searchTerm)))
-    );
-    setFilteredResults(results);
+    const g = groups.find(group => group.authId === authIdInput.trim());
+    if (g) {
+      setTargetGroup(g);
+    } else {
+      setTargetGroup(null);
+      alert("該当する団体が見つかりません。IDを確認してください。");
+    }
   };
+
+  const filteredResults = useMemo(() => {
+    if (!targetGroup) return [];
+    return reservations.filter(res => 
+      res.status !== 'cancelled' && res.groupId === targetGroup.id
+    );
+  }, [reservations, targetGroup]);
 
   const handleCancel = async (targetRes) => {
     if (!inputDeletePass) return alert("取消用パスワードを入力してください。");
@@ -1133,44 +1157,59 @@ function CancelView({ reservations, onSuccess }) {
         <h2 className="text-3xl font-black text-gray-900 tracking-tight flex items-center justify-center">
           <XCircle className="mr-3 h-8 w-8 text-red-500" /> 予約の取り消し
         </h2>
-        <p className="text-sm text-gray-500 font-bold">電話番号または氏名で検索してください</p>
+        <p className="text-sm text-gray-500 font-bold">団体認証IDを入力して、予約一覧を表示します</p>
       </div>
 
       <div className="bg-white p-8 rounded-[2.5rem] border shadow-xl">
         <form onSubmit={handleSearch} className="relative group mb-8">
-          <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="電話番号または責任者名を入力" className="w-full pl-6 pr-14 py-4 bg-gray-50 border-4 border-transparent focus:border-red-400 focus:bg-white rounded-[2rem] text-lg font-bold outline-none transition-all shadow-inner" />
+          <Key className="absolute left-6 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-400" />
+          <input 
+            type="password" 
+            value={authIdInput} 
+            onChange={(e) => setAuthIdInput(e.target.value)} 
+            placeholder="団体認証IDを入力" 
+            className="w-full pl-16 pr-14 py-4 bg-gray-50 border-4 border-transparent focus:border-red-400 focus:bg-white rounded-[2rem] text-lg font-bold outline-none transition-all shadow-inner tracking-widest" 
+          />
           <button type="submit" className="absolute right-3 top-1/2 -translate-y-1/2 p-3 bg-red-500 text-white rounded-2xl hover:bg-red-600 shadow-lg active:scale-95 transition-all">
             <Search className="h-6 w-6" />
           </button>
         </form>
 
-        <div className="space-y-4">
-          {filteredResults.length > 0 && (
-            <div className="bg-red-50 p-4 rounded-2xl mb-4 border border-red-100 flex items-center gap-3">
-              <Key className="h-5 w-5 text-red-500" />
-              <input type="password" placeholder="取消用パスワードを入力" value={inputDeletePass} onChange={(e) => setInputDeletePass(e.target.value)} className="bg-white border-2 border-red-200 rounded-xl px-4 py-2 flex-1 text-sm font-bold outline-none focus:border-red-500" />
+        {targetGroup && (
+          <div className="space-y-4 animate-in fade-in">
+            <div className="text-center mb-6">
+              <span className="bg-red-100 text-red-700 px-4 py-1.5 rounded-full text-sm font-black">
+                {targetGroup.name} の予約一覧
+              </span>
             </div>
-          )}
-          {filteredResults.length > 0 ? (
-            filteredResults.sort((a,b) => a.date.localeCompare(b.date)).map(res => (
-              <div key={res.id} className="bg-white p-6 rounded-3xl border-2 border-gray-50 shadow-md flex justify-between items-center group hover:border-red-100 transition-all">
-                <div className="space-y-1">
-                  <div className="font-black text-lg text-gray-900">{res.date} <span className="text-red-500 ml-2">({res.startTime}-{res.endTime})</span></div>
-                  <div className="text-xs font-bold text-gray-500">{res.place} {res.courts ? `(${res.courts.join(', ')})` : ''} | {res.name}</div>
-                  <div className="text-[10px] text-red-400 font-bold">責任者: {res.repName}</div>
-                </div>
-                <button onClick={() => handleCancel(res)} className="bg-red-50 text-red-500 p-4 rounded-2xl hover:bg-red-500 hover:text-white transition-all shadow-sm">
-                  <Trash2 className="h-6 w-6" />
-                </button>
+            
+            {filteredResults.length > 0 && (
+              <div className="bg-red-50 p-4 rounded-2xl mb-4 border border-red-100 flex items-center gap-3">
+                <Key className="h-5 w-5 text-red-500" />
+                <input type="password" placeholder="取消用パスワードを入力" value={inputDeletePass} onChange={(e) => setInputDeletePass(e.target.value)} className="bg-white border-2 border-red-200 rounded-xl px-4 py-2 flex-1 text-sm font-bold outline-none focus:border-red-500" />
               </div>
-            ))
-          ) : searchTerm && (
-            <div className="text-center py-12 text-gray-400 space-y-2">
-              <AlertTriangle className="h-10 w-10 mx-auto opacity-20" />
-              <p className="font-bold">有効な予約が見つかりません</p>
-            </div>
-          )}
-        </div>
+            )}
+            
+            {filteredResults.length > 0 ? (
+              filteredResults.sort((a,b) => a.date.localeCompare(b.date)).map(res => (
+                <div key={res.id} className="bg-white p-6 rounded-3xl border-2 border-gray-50 shadow-md flex justify-between items-center group hover:border-red-100 transition-all">
+                  <div className="space-y-1">
+                    <div className="font-black text-lg text-gray-900">{res.date} <span className="text-red-500 ml-2">({res.startTime}-{res.endTime})</span></div>
+                    <div className="text-xs font-bold text-gray-500">{res.place} {res.courts ? `(${res.courts.join(', ')})` : ''}</div>
+                  </div>
+                  <button onClick={() => handleCancel(res)} className="bg-red-50 text-red-500 p-4 rounded-2xl hover:bg-red-500 hover:text-white transition-all shadow-sm">
+                    <Trash2 className="h-6 w-6" />
+                  </button>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-12 text-gray-400 space-y-2">
+                <CheckSquare className="h-10 w-10 mx-auto opacity-20" />
+                <p className="font-bold">現在、有効な予約はありません</p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1186,6 +1225,7 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
 
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupType, setNewGroupType] = useState('external');
+  const [newGroupAuthId, setNewGroupAuthId] = useState('');
 
   // キャンセル処理（ペナルティの有無を選択）
   const cancelReservation = async (id, isHardDelete) => {
@@ -1206,14 +1246,16 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
 
   const handleAddGroup = async (e) => {
     e.preventDefault();
-    if (!newGroupName) return;
+    if (!newGroupName || !newGroupAuthId) return alert("団体名と認証IDを入力してください");
     try {
       await addDoc(collection(db, 'artifacts', safeAppId, 'public', 'data', 'groups'), {
         name: newGroupName,
         type: newGroupType,
+        authId: newGroupAuthId.trim(),
         createdAt: new Date().toISOString()
       });
       setNewGroupName('');
+      setNewGroupAuthId('');
       onStatusUpdate();
     } catch (err) { alert("団体の追加に失敗しました"); }
   };
@@ -1225,17 +1267,6 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
         onStatusUpdate();
       } catch (err) { alert("削除に失敗しました"); }
     }
-  };
-
-  const launchEmailToReservedUsers = (targetDates) => {
-    const reservedUsersInPeriod = reservations.filter(r => targetDates.includes(r.date) && r.email && r.status !== 'cancelled');
-    if (reservedUsersInPeriod.length === 0) return;
-    const uniqueEmails = [...new Set(reservedUsersInPeriod.map(u => u.email))];
-    const toField = uniqueEmails.join(',');
-    const periodDisplay = targetDates.length > 1 ? `${targetDates[0]} 〜 ${targetDates[targetDates.length - 1]}` : targetDates[0];
-    const subject = encodeURIComponent("【重要】KAITEKI体育館 施設休館に伴う予約キャンセルのお知らせ");
-    const body = encodeURIComponent(`予約責任者様\n\n施設休館に伴う予約取り消しのお知らせです。\n\n【休館期間】\n${periodDisplay}\n${closedReason ? `【理由】\n${closedReason}\n` : ''}\n本件に関するお問い合わせは管理担当までお願いいたします。\n`);
-    window.location.href = `mailto:${toField}?cc=${ADMIN_CC_EMAIL}&subject=${subject}&body=${body}`;
   };
 
   const addClosedPeriod = async (e) => {
@@ -1261,7 +1292,6 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
         }
       });
       await batch.commit();
-      launchEmailToReservedUsers(targetDates);
       setClosedStart(''); setClosedEnd(''); setClosedReason('');
       onStatusUpdate();
     } catch (err) { alert("保存失敗"); }
@@ -1274,13 +1304,14 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
     }
   };
 
+  // CSV出力から個人情報項目を削除
   const exportToCSV = () => {
-    const headers = ["ステータス", "利用日", "開始", "終了", "場所", "コート", "団体名", "代表者", "使用人数", "電話番号"];
+    const headers = ["ステータス", "利用日", "開始", "終了", "場所", "コート", "団体名", "使用人数"];
     const rows = reservations.map(r => [
       r.status === 'cancelled' ? 'キャンセル済' : '有効',
       r.date, r.startTime, r.endTime, r.place, 
       r.courts ? r.courts.join(', ') : '-',
-      r.name, r.repName, r.userCount || '-', r.phone
+      r.name, r.userCount || '-'
     ]);
     const csvContent = "\uFEFF" + [headers, ...rows].map(e => e.join(",")).join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -1315,7 +1346,10 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
 
         {/* 新機能：登録団体管理 */}
         <div className="bg-white p-6 rounded-[2rem] border-2 border-indigo-50 shadow-xl space-y-4 lg:col-span-2">
-          <h3 className="font-bold text-lg flex items-center text-indigo-900"><Users className="h-5 w-5 mr-2" /> 利用団体の管理 (事前登録)</h3>
+          <div className="flex justify-between items-center">
+            <h3 className="font-bold text-lg flex items-center text-indigo-900"><Users className="h-5 w-5 mr-2" /> 利用団体の管理 (事前登録)</h3>
+            <p className="text-[10px] text-gray-400 font-bold bg-gray-50 px-2 py-1 rounded">※ここで設定した「認証ID」を各団体へ通知してください</p>
+          </div>
           
           <form onSubmit={handleAddGroup} className="flex flex-col sm:flex-row gap-2">
             <input type="text" required placeholder="新規団体名・個人名など" value={newGroupName} onChange={(e)=>setNewGroupName(e.target.value)} className="flex-1 border p-3 rounded-xl text-sm font-bold outline-none focus:border-indigo-500" />
@@ -1324,6 +1358,7 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
               <option value="employee">従業員</option>
               <option value="mcc">会社の部活 (MCC)</option>
             </select>
+            <input type="text" required placeholder="認証ID (半角英数)" value={newGroupAuthId} onChange={(e)=>setNewGroupAuthId(e.target.value)} className="w-32 border p-3 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 tracking-widest" />
             <button type="submit" className="bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold text-sm hover:bg-indigo-700 shadow-lg transition-all active:scale-95 whitespace-nowrap">追加</button>
           </form>
 
@@ -1333,9 +1368,12 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
                 <div key={g.id} className="flex justify-between items-center bg-indigo-50/50 p-3 rounded-xl border border-indigo-100">
                   <div className="flex flex-col">
                     <span className="text-sm font-bold text-gray-800">{g.name}</span>
-                    <span className={`text-[10px] font-black w-fit px-2 py-0.5 rounded uppercase mt-1 ${g.type === 'mcc' ? 'bg-purple-100 text-purple-700' : g.type === 'employee' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-                      {g.type === 'mcc' ? '会社の部活' : g.type === 'employee' ? '従業員' : '一般・団体'}
-                    </span>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase ${g.type === 'mcc' ? 'bg-purple-100 text-purple-700' : g.type === 'employee' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                        {g.type === 'mcc' ? '会社の部活' : g.type === 'employee' ? '従業員' : '一般・団体'}
+                      </span>
+                      <span className="text-[10px] font-mono font-bold text-gray-500 bg-white px-1.5 py-0.5 rounded border border-gray-200">ID: {g.authId}</span>
+                    </div>
                   </div>
                   <button onClick={()=>handleDeleteGroup(g.id)} className="text-indigo-300 hover:text-red-600 p-2 transition-colors"><Trash2 className="h-4 w-4"/></button>
                 </div>
@@ -1362,7 +1400,7 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
               <input type="date" value={closedEnd} onChange={(e)=>setClosedEnd(e.target.value)} className="w-full border p-2 rounded-xl text-sm font-bold" />
             </div>
             <input type="text" placeholder="理由（任意）" value={closedReason} onChange={(e)=>setClosedReason(e.target.value)} className="w-full border p-2 rounded-xl text-sm font-bold" />
-            <button type="submit" className="w-full bg-red-600 text-white py-3 rounded-xl font-bold text-sm hover:bg-red-700 shadow-lg transition-all active:scale-95">休館日を登録 & 連絡メール作成</button>
+            <button type="submit" className="w-full bg-red-600 text-white py-3 rounded-xl font-bold text-sm hover:bg-red-700 shadow-lg transition-all active:scale-95">休館日を登録</button>
           </form>
           <div className="pt-4 border-t border-red-50">
              <div className="max-h-32 overflow-y-auto space-y-2 pr-1">
@@ -1381,6 +1419,7 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
         <h3 className="font-bold text-xl text-blue-900 mb-6 border-b-2 border-blue-50 pb-2 flex items-center">
            <Calendar className="mr-2 h-6 w-6" /> 全予約リスト（{reservations.length}件）
         </h3>
+        {/* 個人情報表示を削除 */}
         <div className="space-y-4">
           {sortedReservations.length === 0 ? <p className="text-center text-gray-300 py-10 font-bold">予約データはありません</p> : sortedReservations.map(res => (
             <div key={res.id} className={`bg-white p-6 rounded-3xl border shadow-md flex flex-col md:flex-row justify-between gap-4 transition-all ${res.status === 'cancelled' ? 'opacity-60 bg-gray-50' : ''}`}>
@@ -1393,7 +1432,6 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
                 <div className="text-xs text-gray-400 italic flex items-center gap-4">
                   <span>目的: {res.purpose}</span>
                   <span className="flex items-center gap-1"><UserCheck className="h-3 w-3" /> {res.userCount}名</span>
-                  <span>代表: {res.repName} ({res.phone})</span>
                 </div>
               </div>
               <div className="flex flex-col gap-2 min-w-[120px]">
