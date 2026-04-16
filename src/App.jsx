@@ -23,32 +23,33 @@ const safeAppId = String(rawAppId).replace(/\//g, '-');
 
 const PORTAL_PASSWORD = "kaiteki-user";
 const ADMIN_PASSWORD = "admin123";
+const ADMIN_CC_EMAIL = "MCJP-DG-RIX_TOYAMA_TAIIKUKAN@mchcgr.com";
 
 // --- 初期登録団体リスト ---
 const INITIAL_GROUPS = [
-  { name: 'MCCバレー', type: 'mcc', authId: 'M1001', isExemptFromLimit: false },
-  { name: 'MCC卓球', type: 'mcc', authId: 'M1002', isExemptFromLimit: false },
-  { name: 'MCCバドミントン', type: 'mcc', authId: 'M1003', isExemptFromLimit: false },
-  { name: '佐野（富山北FC）', type: 'employee', authId: 'E1001', isExemptFromLimit: false },
-  { name: '朝岡（FC ALVA)', type: 'employee', authId: 'E1002', isExemptFromLimit: false },
-  { name: '斉藤（和合ハンドボール）', type: 'employee', authId: 'E1003', isExemptFromLimit: false },
-  { name: '斉藤（ターミガンズ ジュニア）', type: 'employee', authId: 'E1004', isExemptFromLimit: false },
-  { name: '金森（ピックルボール富山）', type: 'employee', authId: 'E1005', isExemptFromLimit: false },
-  { name: '金森（神明フレッシュテニス）', type: 'employee', authId: 'E1006', isExemptFromLimit: false },
-  { name: '亀畑', type: 'employee', authId: 'E1007', isExemptFromLimit: false },
-  { name: '林田（hayashuda)', type: 'employee', authId: 'E1008', isExemptFromLimit: false },
-  { name: '吉岡（富山ドリームズ）', type: 'employee', authId: 'E1009', isExemptFromLimit: false },
-  { name: '梅田', type: 'employee', authId: 'E1010', isExemptFromLimit: false },
-  { name: '古金(BC)', type: 'employee', authId: 'E1011', isExemptFromLimit: false },
-  { name: 'BRABBTS', type: 'external', authId: 'G1001', isExemptFromLimit: false },
-  { name: '富山ダルク', type: 'external', authId: 'G1002', isExemptFromLimit: false },
-  { name: 'Rey華繚乱', type: 'external', authId: 'G1003', isExemptFromLimit: false },
-  { name: 'SDバスケ', type: 'external', authId: 'G1004', isExemptFromLimit: false },
-  { name: '岩瀬中バスケ', type: 'external', authId: 'G1005', isExemptFromLimit: false },
-  { name: '富山北FC', type: 'external', authId: 'G1006', isExemptFromLimit: false },
-  { name: 'HAGIURAバレー', type: 'external', authId: 'G1007', isExemptFromLimit: false },
-  { name: '富山北部VC', type: 'external', authId: 'G1008', isExemptFromLimit: false },
-  { name: '北中女子ソフトテニス部', type: 'external', authId: 'G1009', isExemptFromLimit: false }
+  { name: 'MCCバレー', type: 'mcc', authId: 'M1001', limitType: '20' },
+  { name: 'MCC卓球', type: 'mcc', authId: 'M1002', limitType: '20' },
+  { name: 'MCCバドミントン', type: 'mcc', authId: 'M1003', limitType: '20' },
+  { name: '佐野（富山北FC）', type: 'employee', authId: 'E1001', limitType: '20' },
+  { name: '朝岡（FC ALVA)', type: 'employee', authId: 'E1002', limitType: '20' },
+  { name: '斉藤（和合ハンドボール）', type: 'employee', authId: 'E1003', limitType: '20' },
+  { name: '斉藤（ターミガンズ ジュニア）', type: 'employee', authId: 'E1004', limitType: '20' },
+  { name: '金森（ピックルボール富山）', type: 'employee', authId: 'E1005', limitType: '20' },
+  { name: '金森（神明フレッシュテニス）', type: 'employee', authId: 'E1006', limitType: '20' },
+  { name: '亀畑', type: 'employee', authId: 'E1007', limitType: '20' },
+  { name: '林田（hayashuda)', type: 'employee', authId: 'E1008', limitType: '20' },
+  { name: '吉岡（富山ドリームズ）', type: 'employee', authId: 'E1009', limitType: '20' },
+  { name: '梅田', type: 'employee', authId: 'E1010', limitType: '20' },
+  { name: '古金(BC)', type: 'employee', authId: 'E1011', limitType: '20' },
+  { name: 'BRABBTS', type: 'external', authId: 'G1001', limitType: '20' },
+  { name: '富山ダルク', type: 'external', authId: 'G1002', limitType: '20' },
+  { name: 'Rey華繚乱', type: 'external', authId: 'G1003', limitType: '20' },
+  { name: 'SDバスケ', type: 'external', authId: 'G1004', limitType: '20' },
+  { name: '岩瀬中バスケ', type: 'external', authId: 'G1005', limitType: '20' },
+  { name: '富山北FC', type: 'external', authId: 'G1006', limitType: '20' },
+  { name: 'HAGIURAバレー', type: 'external', authId: 'G1007', limitType: '20' },
+  { name: '富山北部VC', type: 'external', authId: 'G1008', limitType: '20' },
+  { name: '北中女子ソフトテニス部', type: 'external', authId: 'G1009', limitType: '20' }
 ];
 
 const equipmentForAll = [
@@ -462,6 +463,7 @@ export default function App() {
         </div>
       </header>
 
+      {/* 印刷時はコンテナの余白をなくし、最大幅制限を解除 */}
       <main className="max-w-6xl mx-auto px-4 py-6 relative min-h-[500px] print:max-w-none print:px-0 print:py-0 print:m-0">
         {isLoading ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-50 bg-opacity-75 z-10 py-20 print:hidden">
@@ -796,13 +798,19 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
     });
 
     const selectedGroupData = groups.find(g => g.id === formData.groupId);
-    const isExempt = selectedGroupData?.isExemptFromLimit === true;
+    // limitType が未設定の場合は、互換性のため isExemptFromLimit を見て判断。基本は '20'
+    const limitType = selectedGroupData?.limitType || (selectedGroupData?.isExemptFromLimit ? 'unlimited' : '20');
+    const isExempt = limitType === 'unlimited';
+    const limitMinutes = limitType === '30' ? 30 * 60 : 20 * 60;
 
     for (const monthStr of Object.keys(monthlyNewBookings)) {
       const newCount = monthlyNewBookings[monthStr];
       const additionalMinutes = newBookingMinutes * newCount;
 
       const existingResInMonth = reservations.filter(r => {
+        if (formData.name.includes('個人')) {
+          return r.name === formData.name && r.repName === formData.repName && r.date.startsWith(monthStr);
+        }
         return r.groupId === formData.groupId && r.date.startsWith(monthStr);
       });
       
@@ -816,8 +824,9 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
         }
       });
 
-      if (!isExempt && currentTotalMinutes + additionalMinutes > 20 * 60) {
-        return alert(`【${monthStr}】の予約上限（月間20時間）を超過します。\n・現在の消費枠: ${currentTotalMinutes / 60}時間 (※キャンセル分含む)\n・今回追加: ${additionalMinutes / 60}時間`);
+      if (!isExempt && currentTotalMinutes + additionalMinutes > limitMinutes) {
+        const limitLabel = limitType === '30' ? '30' : '20';
+        return alert(`【${monthStr}】の予約上限（月間${limitLabel}時間）を超過します。\n・現在の消費枠: ${currentTotalMinutes / 60}時間 (※キャンセル分含む)\n・今回追加: ${additionalMinutes / 60}時間`);
       }
 
       if (isSixCourts && (currentSixCourtCount + newCount > 1)) {
@@ -859,6 +868,9 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
       setIsSubmitting(false); 
     }
   };
+
+  const selectedGroupData = groups.find(g => g.id === formData.groupId);
+  const limitType = selectedGroupData?.limitType || (selectedGroupData?.isExemptFromLimit ? 'unlimited' : '20');
 
   return (
     <form onSubmit={handleSubmit} className="max-w-4xl mx-auto space-y-8 animate-in slide-in-from-bottom-6 duration-500 pb-10">
@@ -902,13 +914,18 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
               <div className="bg-green-50 border-2 border-green-200 p-4 rounded-2xl animate-in fade-in zoom-in-95">
                 <p className="text-[10px] font-bold text-green-600 uppercase tracking-widest mb-1 flex items-center"><Check className="w-3 h-3 mr-1" /> 認証成功</p>
                 <p className="text-lg font-black text-green-900">{formData.name}</p>
-                <div className="mt-2 flex gap-2">
+                <div className="mt-2 flex flex-wrap gap-2">
                   <span className={`text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider ${userType === 'mcc' ? 'bg-purple-100 text-purple-700' : userType === 'employee' ? 'bg-blue-100 text-blue-700' : 'bg-green-200 text-green-800'}`}>
                     {userType === 'mcc' ? '会社の部活 (次年度3月末まで可)' : userType === 'employee' ? '従業員 (3ヶ月先まで予約可)' : '一般・団体 (2ヶ月先まで予約可)'}
                   </span>
-                  {groups.find(g => g.id === formData.groupId)?.isExemptFromLimit && (
+                  {limitType === 'unlimited' && (
                     <span className="text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider bg-yellow-100 text-yellow-700 border border-yellow-200">
                       時間無制限
+                    </span>
+                  )}
+                  {limitType === '30' && (
+                    <span className="text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider bg-orange-100 text-orange-700 border border-orange-200">
+                      月30時間枠
                     </span>
                   )}
                 </div>
@@ -1112,7 +1129,7 @@ function CancelView({ reservations, groups, onSuccess }) {
     if (!inputDeletePass) return alert("取消用パスワードを入力してください。");
     if (targetRes.deletePass !== inputDeletePass) return alert("パスワードが正しくありません。");
 
-    if (window.confirm('この予約を取り消しますか？\n\n※注意：取り消しをおこなった場合でも、当月の【月間利用枠(20時間)】としてはカウントされ続けます。')) {
+    if (window.confirm('この予約を取り消しますか？\n\n※注意：取り消しをおこなった場合でも、当月の【月間利用枠】としてはカウントされ続けます。')) {
       try {
         await updateDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', targetRes.id), {
           status: 'cancelled'
@@ -1200,7 +1217,7 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupType, setNewGroupType] = useState('external');
   const [newGroupAuthId, setNewGroupAuthId] = useState('');
-  const [newGroupIsExempt, setNewGroupIsExempt] = useState(false);
+  const [newGroupLimitType, setNewGroupLimitType] = useState('20'); // デフォルトは20時間
   
   const [groupSearchTerm, setGroupSearchTerm] = useState('');
 
@@ -1245,12 +1262,12 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
         name: newGroupName,
         type: newGroupType,
         authId: newGroupAuthId.trim().toUpperCase(),
-        isExemptFromLimit: newGroupIsExempt,
+        limitType: newGroupLimitType,
         createdAt: new Date().toISOString()
       });
       setNewGroupName('');
       setNewGroupAuthId('');
-      setNewGroupIsExempt(false);
+      setNewGroupLimitType('20');
       onStatusUpdate();
     } catch (err) { alert("団体の追加に失敗しました"); }
   };
@@ -1264,11 +1281,18 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
     }
   };
 
-  const toggleExemptStatus = async (id, currentStatus) => {
-    if (window.confirm(`この団体の「月間20時間制限」を${currentStatus ? '適用（上限あり）' : '免除（無制限）'} に変更しますか？`)) {
+  // 枠制限を 20 -> 30 -> unlimited と切り替える
+  const toggleLimitType = async (id, currentType) => {
+    const types = ['20', '30', 'unlimited'];
+    const cType = currentType || '20';
+    const nextIndex = (types.indexOf(cType) + 1) % types.length;
+    const nextType = types[nextIndex];
+    const typeLabels = { '20': '20時間/月', '30': '30時間/月 (拡張)', 'unlimited': '無制限' };
+    
+    if (window.confirm(`この団体の月間利用枠を「${typeLabels[nextType]}」に変更しますか？`)) {
       try {
         await updateDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'groups', id), {
-          isExemptFromLimit: !currentStatus
+          limitType: nextType
         });
         onStatusUpdate();
       } catch (err) { alert("更新に失敗しました"); }
@@ -1372,8 +1396,8 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
             </div>
           </div>
           
-          <form onSubmit={handleAddGroup} className="flex flex-col gap-3 bg-indigo-50/30 p-4 rounded-2xl border border-indigo-100">
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+          <form onSubmit={handleAddGroup} className="bg-indigo-50/30 p-5 rounded-2xl border border-indigo-100">
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
               <div className="sm:col-span-4">
                 <label className="text-[9px] font-black text-indigo-400 uppercase tracking-widest px-1 block mb-1">団体・個人名</label>
                 <input type="text" required placeholder="例：MCCテニス部" value={newGroupName} onChange={(e)=>setNewGroupName(e.target.value)} className="w-full border p-2.5 rounded-xl text-sm font-bold outline-none focus:border-indigo-500" />
@@ -1390,15 +1414,17 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
                 <label className="text-[9px] font-black text-indigo-400 uppercase tracking-widest px-1 block mb-1">認証ID (推奨: {nextIdGuides[newGroupType]})</label>
                 <input type="text" required placeholder="IDを入力" value={newGroupAuthId} onChange={(e)=>setNewGroupAuthId(e.target.value)} className="w-full border p-2.5 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 tracking-widest font-mono" />
               </div>
-              <div className="sm:col-span-2 flex items-end">
-                <button type="submit" className="w-full bg-indigo-600 text-white py-2.5 rounded-xl font-bold text-sm hover:bg-indigo-700 shadow-lg active:scale-95 transition-all">追加登録</button>
-              </div>
             </div>
-            <div className="flex items-center justify-between border-t border-indigo-100/50 pt-2 mt-1">
-              <label className="flex items-center space-x-2 text-xs font-bold text-indigo-900 cursor-pointer">
-                <input type="checkbox" checked={newGroupIsExempt} onChange={(e)=>setNewGroupIsExempt(e.target.checked)} className="w-4 h-4 rounded border-indigo-300 text-indigo-600 focus:ring-indigo-500" />
-                <span>月間20時間の利用制限を免除する（無制限）</span>
-              </label>
+            <div className="flex items-center justify-between border-t border-indigo-100/50 pt-4 mt-4">
+              <div className="flex items-center gap-2">
+                <label className="text-[9px] font-black text-indigo-400 uppercase tracking-widest px-1 block">月間利用枠の設定</label>
+                <select value={newGroupLimitType} onChange={(e)=>setNewGroupLimitType(e.target.value)} className="border border-indigo-200 p-2 rounded-xl text-xs font-bold bg-white text-indigo-900 outline-none focus:border-indigo-500 shadow-sm">
+                  <option value="20">20時間/月 (標準)</option>
+                  <option value="30">30時間/月 (拡張)</option>
+                  <option value="unlimited">無制限 (免除)</option>
+                </select>
+              </div>
+              <button type="submit" className="bg-indigo-600 text-white px-8 py-2.5 rounded-xl font-bold text-sm hover:bg-indigo-700 shadow-lg active:scale-95 transition-all">追加登録</button>
             </div>
           </form>
 
@@ -1414,33 +1440,37 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
               />
             </div>
             <div className="max-h-64 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pr-1">
-              {filteredGroups.map(g => (
-                <div key={g.id} className="flex justify-between items-center bg-white p-3 rounded-xl border border-gray-100 shadow-sm hover:border-indigo-200 transition-all">
-                  <div className="flex flex-col">
-                    <span className="text-sm font-black text-gray-800 truncate max-w-[150px]">{g.name}</span>
-                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase ${g.type === 'mcc' ? 'bg-purple-100 text-purple-700' : g.type === 'employee' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-                        {g.type === 'mcc' ? '会社の部活' : g.type === 'employee' ? '従業員' : '一般・団体'}
-                      </span>
-                      <span className="text-[9px] font-mono font-bold text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded">ID: {g.authId}</span>
-                      {g.isExemptFromLimit && <span className="text-[8px] font-black px-1.5 py-0.5 rounded uppercase bg-yellow-100 text-yellow-700 border border-yellow-200">時間無制限</span>}
+              {filteredGroups.map(g => {
+                const lType = g.limitType || (g.isExemptFromLimit ? 'unlimited' : '20');
+                return (
+                  <div key={g.id} className="flex justify-between items-center bg-white p-3 rounded-xl border border-gray-100 shadow-sm hover:border-indigo-200 transition-all">
+                    <div className="flex flex-col">
+                      <span className="text-sm font-black text-gray-800 truncate max-w-[150px]">{g.name}</span>
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase ${g.type === 'mcc' ? 'bg-purple-100 text-purple-700' : g.type === 'employee' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                          {g.type === 'mcc' ? '会社の部活' : g.type === 'employee' ? '従業員' : '一般・団体'}
+                        </span>
+                        <span className="text-[9px] font-mono font-bold text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded">ID: {g.authId}</span>
+                        {lType === 'unlimited' && <span className="text-[8px] font-black px-1.5 py-0.5 rounded uppercase bg-yellow-100 text-yellow-700 border border-yellow-200">時間無制限</span>}
+                        {lType === '30' && <span className="text-[8px] font-black px-1.5 py-0.5 rounded uppercase bg-orange-100 text-orange-700 border border-orange-200">枠拡張(30h)</span>}
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      <button onClick={()=>toggleLimitType(g.id, lType)} className="text-gray-400 hover:text-indigo-600 p-2 transition-colors" title="月間利用枠を変更">
+                        {lType === 'unlimited' ? <Unlock className="h-4 w-4 text-yellow-500"/> : lType === '30' ? <Clock className="h-4 w-4 text-orange-500"/> : <Lock className="h-4 w-4"/>}
+                      </button>
+                      <button onClick={()=>handleDeleteGroup(g.id)} className="text-indigo-300 hover:text-red-600 p-2 transition-colors"><Trash2 className="h-4 w-4"/></button>
                     </div>
                   </div>
-                  <div className="flex gap-1">
-                    <button onClick={()=>toggleExemptStatus(g.id, g.isExemptFromLimit)} className="text-gray-400 hover:text-yellow-600 p-2 transition-colors" title={g.isExemptFromLimit ? "制限を適用" : "制限を免除"}>
-                      {g.isExemptFromLimit ? <Unlock className="h-4 w-4"/> : <Lock className="h-4 w-4"/>}
-                    </button>
-                    <button onClick={()=>handleDeleteGroup(g.id)} className="text-indigo-300 hover:text-red-600 p-2 transition-colors"><Trash2 className="h-4 w-4"/></button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
               {filteredGroups.length === 0 && <p className="col-span-full text-center text-gray-400 py-6 text-xs font-bold">該当する団体がいません</p>}
             </div>
           </div>
         </div>
 
         <div className="bg-white p-6 rounded-[2rem] border-2 border-blue-50 shadow-xl space-y-4 h-fit">
-          <h3 className="font-bold text-lg flex items-center text-blue-900"><Printer className="h-5 w-5 mr-2" /> 掲示用予定表 (3日間分)</h3>
+          <h3 className="font-bold text-lg flex items-center text-blue-900"><Printer className="h-5 w-5 mr-2" /> 掲示用予定表 (5日間分)</h3>
           <div className="flex flex-wrap items-center gap-4">
             <input type="date" value={printWeekStart} onChange={(e)=>setPrintWeekStart(e.target.value)} className="border p-2 rounded-xl text-sm font-bold" />
             <button onClick={()=>setShowPrintView(true)} className="bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-blue-700 shadow flex items-center space-x-2">
@@ -1507,17 +1537,16 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
 
 function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
   const weekStart = new Date(weekStartStr);
-  // 今日から3日間分の日付を生成
-  const displayDays = Array.from({ length: 3 }, (_, i) => {
+  const displayDays = Array.from({ length: 5 }, (_, i) => {
     const d = new Date(weekStart);
     d.setDate(weekStart.getDate() + i);
     return formatDateStr(d);
   });
   
+  const courts = ['D', 'E', 'F', 'A', 'B', 'C'];
   const closedDateStrs = closedDays.map(cd => cd.date);
   const dayLabels = ['日','月','火','水','木','金','土'];
 
-  // 印刷時に背景色と線を強制出力するためのCSS
   useEffect(() => {
     const style = document.createElement('style');
     style.innerHTML = `
@@ -1537,7 +1566,7 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
         <div className="flex items-center space-x-3">
           <Printer className="h-8 w-8 text-blue-600" />
           <div>
-            <h3 className="text-xl font-bold">掲示用 3日間予定表 (印刷)</h3>
+            <h3 className="text-xl font-bold">掲示用 5日間予定表 (印刷)</h3>
             <p className="text-xs text-gray-500 font-bold">自動的に横向き設定になっています。</p>
           </div>
         </div>
@@ -1549,8 +1578,8 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
 
       <div className="bg-white p-4 min-h-[800px] font-sans print:p-0 print:min-h-0">
         <div className="text-center mb-6">
-          <h2 className="text-2xl font-bold border-b-[3px] border-black inline-block px-12 pb-2 tracking-widest">KAITEKI体育館 利用予定表 (3日間)</h2>
-          <p className="text-base font-bold mt-2">{displayDays[0]} 〜 {displayDays[2]}</p>
+          <h2 className="text-2xl font-bold border-b-[3px] border-black inline-block px-12 pb-2 tracking-widest">KAITEKI体育館 利用予定表 (5日間)</h2>
+          <p className="text-base font-bold mt-2">{displayDays[0]} 〜 {displayDays[4]}</p>
         </div>
         
         <div className="border-[3px] border-black bg-white">
@@ -1558,9 +1587,9 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
             <thead>
               <tr className="bg-gray-100 border-b-[3px] border-black">
                 <th className="border-r-[3px] border-black p-1 w-[8%] font-bold text-gray-800">日付</th>
-                <th className="border-r-[3px] border-black p-1 w-[12%] font-bold text-gray-800">施設 / コート</th>
-                {TIME_SLOTS.map(t => (
-                  <th key={t} className="border-r border-gray-300 p-0.5 font-mono text-[9px] font-bold text-gray-800">
+                <th className="border-r-[3px] border-black p-1 w-[10%] font-bold text-gray-800">施設 / コート</th>
+                {TIME_SLOTS.map((t, i) => (
+                  <th key={t} className={`p-0.5 font-mono text-[8px] sm:text-[9px] font-bold text-gray-800 border-gray-300 ${i < TIME_SLOTS.length - 1 ? 'border-r' : ''}`}>
                     {t.replace(/^0/, '')}
                   </th>
                 ))}
@@ -1578,16 +1607,16 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                     {RESOURCES.map((res, rIndex) => {
                       const isLastResource = rIndex === RESOURCES.length - 1;
                       return (
-                        <tr key={`${d}-${res.id}`} className={`h-8 ${isLastResource ? '' : 'border-b border-gray-300'}`}>
+                        <tr key={`${d}-${res.id}`} className={`h-7 sm:h-8 ${isLastResource && dayIndex < displayDays.length - 1 ? 'border-b-[3px] border-black' : 'border-b border-gray-300'}`}>
                           {rIndex === 0 && (
                             <td rowSpan={RESOURCES.length} className={`border-r-[3px] border-black p-1 text-center font-bold bg-white ${dayColor} text-sm whitespace-nowrap`}>
                               {dayLabel}
                               {isClosed && <div className="text-[10px] text-red-500 mt-2 font-black">【休館】</div>}
                             </td>
                           )}
-                          <td className="border-r-[3px] border-black p-1 font-bold bg-white text-gray-800 whitespace-nowrap text-center text-[10px]">
+                          <td className="border-r-[3px] border-black p-1 font-bold bg-white text-gray-800 whitespace-nowrap text-center text-[10px] print:text-[8px]">
                             {res.id === '多目的室' ? '多目的室' : `コート${res.id} `}
-                            {res.id !== '多目的室' && <span className="text-[8px] text-gray-400">({['A','B','C'].includes(res.id) ? '用具' : '入口'})</span>}
+                            {res.id !== '多目的室' && <span className="text-[8px] text-gray-400 print:text-[6px]">({['A','B','C'].includes(res.id) ? '用具' : '入口'})</span>}
                           </td>
                           
                           {(() => {
@@ -1596,9 +1625,10 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                             while (cIndex < TIME_SLOTS.length) {
                               const start = TIME_SLOTS[cIndex];
                               const end = END_TIMES[cIndex];
+                              const isLastSlot = cIndex === TIME_SLOTS.length - 1;
 
                               if (isClosed) {
-                                cells.push(<td key={start} className="border-r border-gray-300 bg-gray-200/50 bg-[repeating-linear-gradient(45deg,transparent,transparent_2px,rgba(0,0,0,0.1)_2px,rgba(0,0,0,0.1)_4px)]"></td>);
+                                cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''} bg-gray-200/50 bg-[repeating-linear-gradient(45deg,transparent,transparent_2px,rgba(0,0,0,0.1)_2px,rgba(0,0,0,0.1)_4px)]`}></td>);
                                 cIndex++;
                                 continue;
                               }
@@ -1626,11 +1656,21 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                                 }
 
                                 const bgColor = matchingRes.userType === 'mcc' ? 'bg-purple-200' : matchingRes.userType === 'employee' ? 'bg-blue-200' : 'bg-green-200';
+                                const isLastSpanSlot = (cIndex + span - 1) === TIME_SLOTS.length - 1;
                                 
                                 cells.push(
-                                  <td key={start} colSpan={span} className={`border border-black ${bgColor} p-0 relative`}>
-                                    <div className="absolute inset-0 flex items-center justify-center p-0.5 overflow-hidden">
-                                      <span className="font-bold text-black leading-tight text-center break-words text-[10px]">
+                                  <td key={start} colSpan={span} className={`p-0 relative border-gray-300 ${!isLastSpanSlot ? 'border-r' : ''}`}>
+                                    {/* 背景色と透過する縦線 */}
+                                    <div className={`absolute inset-0 flex ${bgColor}`}>
+                                      {Array.from({ length: span }).map((_, i) => (
+                                        <div key={i} className={`flex-1 ${i < span - 1 ? 'border-r border-gray-300/50' : ''}`}></div>
+                                      ))}
+                                    </div>
+                                    {/* 予約ブロックの太枠 */}
+                                    <div className="absolute inset-0 border-[2px] border-black pointer-events-none z-10"></div>
+                                    {/* 文字を読みやすくするための背景 */}
+                                    <div className="absolute inset-0 flex items-center justify-center p-0.5 overflow-hidden z-20">
+                                      <span className="font-bold text-black leading-tight text-center break-words text-[9px] sm:text-[10px] bg-white/60 px-1 rounded shadow-sm">
                                         {matchingRes.name}
                                       </span>
                                     </div>
@@ -1638,7 +1678,7 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                                 );
                                 cIndex += span;
                               } else {
-                                cells.push(<td key={start} className="border-r border-gray-300"></td>);
+                                cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''}`}></td>);
                                 cIndex++;
                               }
                             }
@@ -1647,10 +1687,6 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                         </tr>
                       );
                     })}
-                    {/* 日付ごとの区切りを太くする */}
-                    {dayIndex < displayDays.length - 1 && (
-                      <tr className="border-b-[3px] border-black"><td colSpan={TIME_SLOTS.length + 2} className="p-0 border-none h-0"></td></tr>
-                    )}
                   </React.Fragment>
                 );
               })}
@@ -1660,9 +1696,9 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
         
         <div className="mt-6 flex justify-between items-end text-[12px] font-bold text-gray-600">
           <div className="flex space-x-6">
-            <span className="flex items-center"><span className="w-4 h-4 bg-purple-200 border border-black inline-block mr-2"></span>会社の部活</span>
-            <span className="flex items-center"><span className="w-4 h-4 bg-blue-200 border border-black inline-block mr-2"></span>従業員</span>
-            <span className="flex items-center"><span className="w-4 h-4 bg-green-200 border border-black inline-block mr-2"></span>一般・団体</span>
+            <span className="flex items-center"><span className="w-4 h-4 bg-purple-200 border-2 border-black inline-block mr-2"></span>会社の部活</span>
+            <span className="flex items-center"><span className="w-4 h-4 bg-blue-200 border-2 border-black inline-block mr-2"></span>従業員</span>
+            <span className="flex items-center"><span className="w-4 h-4 bg-green-200 border-2 border-black inline-block mr-2"></span>一般・団体</span>
           </div>
           <div>出力日時: {new Date().toLocaleString()}</div>
         </div>
@@ -1714,8 +1750,18 @@ function RulesView() {
                 </div>
               </div>
               <div className="mt-4 space-y-3 pt-4 border-t-2 border-blue-100/50 text-xs font-black text-red-600">
-                 <p className="border-l-4 border-red-500 pl-2">月間利用制限：全団体共通 月20時間まで</p>
+                 <p className="border-l-4 border-red-500 pl-2">月間利用制限：基本は月20時間まで<br/><span className="text-[10px] text-red-400 font-normal">（※一部団体は申請により30時間または無制限）</span></p>
                  <p className="border-l-4 border-red-500 pl-2">全面予約制限：体育館6面予約は月1回まで</p>
+                 <div className="bg-red-50 p-3 rounded-xl border border-red-100 mt-2">
+                   <p className="text-[10px] text-red-800 font-bold leading-relaxed mb-2">
+                     <CheckSquare className="inline w-3 h-3 mr-1 mb-0.5"/>
+                     利用可能枠は「予約が確定した時点（予約ベース）」で消費されます。
+                   </p>
+                   <p className="text-[10px] text-red-800 font-bold leading-relaxed">
+                     <AlertTriangle className="inline w-3 h-3 mr-1 mb-0.5"/>
+                     キャンセルした場合も、ペナルティとして当月の利用枠を消費したままとなります。計画的なご予約をお願いいたします。
+                   </p>
+                 </div>
               </div>
             </div>
           </section>
