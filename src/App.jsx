@@ -669,6 +669,14 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
     }
   }, [authIdInput, groups]);
 
+  // --- 団体種別に応じた定期予約の最大回数 ---
+  const maxRecurringCount = useMemo(() => {
+    if (userType === 'mcc') return 60; // 約1年分
+    if (userType === 'employee') return 15; // 約3ヶ月分
+    if (userType === 'external') return 10; // 約2ヶ月分
+    return 10; // デフォルト
+  }, [userType]);
+
   const closedDateStrs = useMemo(() => closedDays.map(cd => cd.date), [closedDays]);
   const isSelectedDateClosed = closedDateStrs.includes(selectedDate);
 
@@ -746,7 +754,12 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
     }
 
     if (selectedFacilities.includes('体育館') && selectedCourts.length === 0) return alert("コート(A-F)を選んでください。");
-    if (targetDates.length > 20) return alert("定期予約は最大20回分までまとめて申請可能です。");
+    
+    // 動的な回数制限チェック
+    if (targetDates.length > maxRecurringCount) {
+      const typeLabel = userType === 'mcc' ? '会社の部活 (約1年分)' : userType === 'employee' ? '従業員 (約3ヶ月分)' : '一般・団体 (約2ヶ月分)';
+      return alert(`${typeLabel}の定期予約は最大${maxRecurringCount}回分までまとめて申請可能です。`);
+    }
 
     const today = new Date();
     const currentYear = today.getFullYear();
@@ -970,6 +983,12 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
                     <RefreshCw className="w-3 h-3" /> 定期予約の終了日 *
                   </label>
                   <input type="date" required value={recurringEndDate} onChange={(e)=>setRecurringEndDate(e.target.value)} className={`border-2 p-4 rounded-2xl w-full font-bold text-lg text-indigo-900 outline-none transition-all ${hasClosedDayInTargets ? 'border-amber-400 bg-amber-50' : 'border-indigo-100 focus:border-indigo-500'}`} />
+                  {/* 最大申請回数のガイド表示 */}
+                  {userType && (
+                    <p className="text-[10px] text-indigo-500 font-bold px-1 mt-1">
+                      ※ 現在の団体区分では最大 {maxRecurringCount} 回分まで一括申請可能です。
+                    </p>
+                  )}
                   {hasClosedDayInTargets && (
                     <div className="bg-amber-50 border border-amber-200 p-2 rounded-lg mt-2 space-y-1">
                       <p className="text-amber-700 text-[10px] font-black flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> 休館日が含まれています（自動除外）</p>
@@ -1456,6 +1475,9 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
           </h2>
           <p className="text-xs font-bold text-gray-500 mt-1">システムの管理とデータの出力を行います</p>
         </div>
+        <button onClick={exportToCSV} className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm hover:bg-green-700 shadow-lg active:scale-95 transition-all">
+          <Download className="h-4 w-4" /><span>CSV出力(Excel用)</span>
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -1522,7 +1544,6 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
                     <div className="flex flex-col">
                       <span className="text-sm font-black text-gray-800 truncate max-w-[150px]">{g.name}</span>
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        {/* 単なるspanからselect要素に変更 */}
                         <select 
                           value={g.type} 
                           onChange={(e) => updateGroupType(g.id, g.type, e.target.value)}
@@ -1779,7 +1800,7 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                           )}
                           <td className="border-r-[3px] border-black p-1 font-bold bg-white text-gray-800 whitespace-nowrap text-center text-[10px] print:text-[8px]">
                             {res.id === '多目的室' ? '多目的室' : `コート${res.id} `}
-                            {res.id !== '多目的室' && <span className="text-[8px] text-gray-400 print:text-[6px]">({['A','B','C'].includes(res.id) ? '用具' : '入口'})</span>}
+                            {res.id !== '多目的室' && <span className="text-[8px] text-gray-400 print:text-[6px]">({['A','B','C'].includes(res.id) ? '入口' : '用具'})</span>}
                           </td>
                           
                           {(() => {
