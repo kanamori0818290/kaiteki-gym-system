@@ -1219,7 +1219,12 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
   const [newGroupAuthId, setNewGroupAuthId] = useState('');
   const [newGroupLimitType, setNewGroupLimitType] = useState('20'); // デフォルトは20時間
   
+  // 団体管理用のフィルタ
   const [groupSearchTerm, setGroupSearchTerm] = useState('');
+  
+  // 全予約リスト用のフィルタ
+  const [resFilterPeriod, setResFilterPeriod] = useState('upcoming');
+  const [resFilterGroup, setResFilterGroup] = useState('all');
   
   // 利用状況可視化用の対象月（初期値は今月）
   const [usageMonth, setUsageMonth] = useState(formatDateStr(new Date()).substring(0, 7));
@@ -1266,6 +1271,38 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
     // 使用時間が多い順にソート
     return stats.sort((a, b) => b.usedMinutes - a.usedMinutes);
   }, [groups, reservations, usageMonth]);
+
+  // 全予約リスト用の期間オプションの生成
+  const periodOptions = useMemo(() => {
+    const months = new Set();
+    reservations.forEach(r => {
+      if(r.date) months.add(r.date.substring(0, 7));
+    });
+    const sortedMonths = Array.from(months).sort().reverse();
+    return [
+      { value: 'upcoming', label: '今日以降の予約のみ' },
+      { value: 'all', label: 'すべての期間' },
+      ...sortedMonths.map(m => ({ value: m, label: `${m.split('-')[0]}年${m.split('-')[1]}月` }))
+    ];
+  }, [reservations]);
+
+  // 全予約リストのフィルタリングとソート
+  const filteredAndSortedReservations = useMemo(() => {
+    const todayStr = formatDateStr(new Date());
+    return reservations
+      .filter(r => {
+        // 団体フィルター
+        if (resFilterGroup !== 'all' && r.groupId !== resFilterGroup) return false;
+        // 期間フィルター
+        if (resFilterPeriod === 'upcoming') {
+          return r.date >= todayStr;
+        } else if (resFilterPeriod !== 'all') {
+          return r.date.startsWith(resFilterPeriod);
+        }
+        return true;
+      })
+      .sort((a, b) => a.date.localeCompare(b.date) || (a.startTime || "").localeCompare(b.startTime || ""));
+  }, [reservations, resFilterPeriod, resFilterGroup]);
 
   const updateReservationStatus = async (id, status) => {
     if (window.confirm(`この予約のステータスを「${status === 'approved' ? '予約確定' : 'キャンセル済'}」に変更しますか？`)) {
@@ -1391,7 +1428,7 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
 
   const exportToCSV = () => {
     const headers = ["ステータス", "利用日", "開始", "終了", "場所", "コート", "団体名", "使用人数"];
-    const rows = reservations.map(r => [
+    const rows = filteredAndSortedReservations.map(r => [
       r.status === 'cancelled' ? 'キャンセル済' : '有効',
       r.date, r.startTime, r.endTime, r.place, 
       r.courts ? r.courts.join(', ') : '-',
@@ -1406,8 +1443,6 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
     document.body.removeChild(link);
   };
 
-  const sortedReservations = [...reservations].sort((a,b)=>a.date.localeCompare(b.date));
-
   if (showPrintView) {
     return <WeeklyPrintView reservations={reservations} closedDays={closedDays} weekStartStr={printWeekStart} onBack={() => setShowPrintView(false)} />;
   }
@@ -1421,9 +1456,6 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
           </h2>
           <p className="text-xs font-bold text-gray-500 mt-1">システムの管理とデータの出力を行います</p>
         </div>
-        <button onClick={exportToCSV} className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm hover:bg-green-700 shadow-lg active:scale-95 transition-all">
-          <Download className="h-4 w-4" /><span>CSV出力(Excel用)</span>
-        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -1600,11 +1632,45 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
       </div>
       
       <section>
-        <h3 className="font-bold text-xl text-blue-900 mb-6 border-b-2 border-blue-50 pb-2 flex items-center">
-           <Calendar className="mr-2 h-6 w-6" /> 全予約リスト（{reservations.length}件）
-        </h3>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b-2 border-blue-50 pb-4 gap-4">
+          <h3 className="font-bold text-xl text-blue-900 flex items-center">
+             <Calendar className="mr-2 h-6 w-6" /> 全予約リスト（{filteredAndSortedReservations.length}件）
+          </h3>
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            {/* CSV出力ボタンをここに移動 */}
+            <button onClick={exportToCSV} className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-xl font-bold text-[11px] hover:bg-green-700 shadow-md active:scale-95 transition-all shrink-0">
+              <Download className="h-4 w-4" /><span>CSV出力</span>
+            </button>
+          </div>
+        </div>
+
+        {/* フィルタリングUI */}
+        <div className="flex flex-col sm:flex-row gap-4 mb-6 bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
+          <div className="flex-1 flex items-center gap-2">
+            <Filter className="w-4 h-4 text-blue-500 shrink-0" />
+            <select 
+              value={resFilterPeriod} 
+              onChange={e => setResFilterPeriod(e.target.value)} 
+              className="flex-1 border-none bg-white p-2 rounded-xl text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-blue-500"
+            >
+               {periodOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div className="flex-1 flex items-center gap-2">
+            <Users className="w-4 h-4 text-blue-500 shrink-0" />
+            <select 
+              value={resFilterGroup} 
+              onChange={e => setResFilterGroup(e.target.value)} 
+              className="flex-1 border-none bg-white p-2 rounded-xl text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-blue-500"
+            >
+               <option value="all">すべての団体</option>
+               {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+            </select>
+          </div>
+        </div>
+
         <div className="space-y-4">
-          {sortedReservations.length === 0 ? <p className="text-center text-gray-300 py-10 font-bold">予約データはありません</p> : sortedReservations.map(res => (
+          {filteredAndSortedReservations.length === 0 ? <p className="text-center text-gray-300 py-10 font-bold">該当する予約データはありません</p> : filteredAndSortedReservations.map(res => (
             <div key={res.id} className={`bg-white p-6 rounded-3xl border shadow-md flex flex-col md:flex-row justify-between gap-4 transition-all ${res.status === 'cancelled' ? 'opacity-60 bg-gray-50' : ''}`}>
               <div className="flex-1 space-y-1">
                 <div className="font-black text-xl">
