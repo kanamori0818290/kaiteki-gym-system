@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban, Mail, Key, UserCheck, MousePointerClick, RotateCcw, Filter, Unlock, BarChart3, Megaphone } from 'lucide-react';
+import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban, Mail, Key, UserCheck, MousePointerClick, RotateCcw, Filter, Unlock, BarChart3, Megaphone, MessageSquare } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, query, writeBatch, setDoc } from 'firebase/firestore';
@@ -308,7 +308,8 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [reservations, setReservations] = useState([]);
   const [closedDays, setClosedDays] = useState([]);
-  const [groups, setGroups] = useState([]); // 団体マスタ
+  const [groups, setGroups] = useState([]); 
+  const [reports, setReports] = useState([]); // お問合せ・報告データ
   const [announcementText, setAnnouncementText] = useState(''); // お知らせテキスト
   const [isLoading, setIsLoading] = useState(true);
 
@@ -363,6 +364,12 @@ export default function App() {
       }
     });
 
+    const reportsRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'reports');
+    const unsubReports = onSnapshot(reportsRef, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setReports(data);
+    });
+
     // お知らせメッセージの取得
     const announceRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'system_messages', 'announcement');
     const unsubAnnounce = onSnapshot(announceRef, (docSnap) => {
@@ -377,6 +384,7 @@ export default function App() {
       unsubRes();
       unsubClosed();
       unsubGroups();
+      unsubReports();
       unsubAnnounce();
     };
   }, [user]);
@@ -469,8 +477,9 @@ export default function App() {
             <TabButton icon={<Calendar />} label="状況" isActive={activeTab === 'calendar'} onClick={() => setActiveTab('calendar')} />
             <TabButton icon={<FileText />} label="予約" isActive={activeTab === 'reserve'} onClick={() => { setActiveTab('reserve'); setPreSelectedDate(''); }} />
             <TabButton icon={<XCircle />} label="取消" isActive={activeTab === 'cancel'} onClick={() => setActiveTab('cancel')} />
-            {isAdmin && <TabButton icon={<ShieldCheck className="text-yellow-400" />} label="管理" isActive={activeTab === 'admin'} onClick={() => setActiveTab('admin')} />}
+            <TabButton icon={<MessageSquare />} label="連絡" isActive={activeTab === 'report'} onClick={() => setActiveTab('report')} />
             <TabButton icon={<Info />} label="規約" isActive={activeTab === 'rules'} onClick={() => setActiveTab('rules')} />
+            {isAdmin && <TabButton icon={<ShieldCheck className="text-yellow-400" />} label={`管理${reports.filter(r=>r.status==='unread').length > 0 ? '(!)' : ''}`} isActive={activeTab === 'admin'} onClick={() => setActiveTab('admin')} />}
           </nav>
         </div>
       </header>
@@ -513,12 +522,14 @@ export default function App() {
               />
             )}
             {activeTab === 'cancel' && <CancelView reservations={reservations} groups={groups} onSuccess={() => { showToast('予約をキャンセルしました'); setActiveTab('calendar'); }} />}
+            {activeTab === 'report' && <ReportView groups={groups} user={user} onSuccess={(msg) => { showToast(msg); setActiveTab('calendar'); }} />}
             {activeTab === 'rules' && <RulesView />}
             {activeTab === 'admin' && isAdmin && (
               <AdminDashboard 
                 reservations={reservations} 
                 closedDays={closedDays} 
                 groups={groups} 
+                reports={reports}
                 currentAnnouncement={announcementText}
                 onStatusUpdate={() => showToast('更新しました')} 
               />
@@ -1256,7 +1267,109 @@ function CancelView({ reservations, groups, onSuccess }) {
   );
 }
 
-function AdminDashboard({ reservations, closedDays, groups, currentAnnouncement, onStatusUpdate }) {
+// --- 報告・連絡フォーム（新規追加） ---
+function ReportView({ groups, user, onSuccess }) {
+  const [authIdInput, setAuthIdInput] = useState('');
+  const [targetGroup, setTargetGroup] = useState(null);
+  const [category, setCategory] = useState('施設・設備について');
+  const [message, setMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSearch = (e) => {
+    e.preventDefault();
+    const g = groups.find(group => group.authId === authIdInput.trim());
+    if (g) {
+      setTargetGroup(g);
+    } else {
+      setTargetGroup(null);
+      alert("該当する団体が見つかりません。IDを確認してください。");
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!targetGroup) return;
+    if (!message.trim()) return alert("報告内容を入力してください。");
+
+    setIsSubmitting(true);
+    try {
+      await addDoc(collection(db, 'artifacts', safeAppId, 'public', 'data', 'reports'), {
+        groupId: targetGroup.id,
+        groupName: targetGroup.name,
+        category,
+        message,
+        status: 'unread',
+        createdAt: new Date().toISOString(),
+        userId: user?.uid || 'anonymous'
+      });
+      setMessage('');
+      onSuccess('報告を送信しました。ご協力ありがとうございます。');
+      setTargetGroup(null);
+      setAuthIdInput('');
+    } catch (err) {
+      alert("送信に失敗しました。");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-8 animate-in fade-in duration-500">
+      <div className="text-center space-y-2">
+        <h2 className="text-3xl font-black text-gray-900 tracking-tight flex items-center justify-center">
+          <MessageSquare className="mr-3 h-8 w-8 text-blue-500" /> 連絡・故障報告
+        </h2>
+        <p className="text-sm text-gray-500 font-bold">施設や備品の故障、お気づきの点をお知らせください</p>
+      </div>
+
+      <div className="bg-white p-8 rounded-[2.5rem] border shadow-xl">
+        <form onSubmit={handleSearch} className="relative group mb-8">
+          <Key className="absolute left-6 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-400" />
+          <input 
+            type="password" 
+            value={authIdInput} 
+            onChange={(e) => setAuthIdInput(e.target.value)} 
+            placeholder="団体認証IDを入力" 
+            className="w-full pl-16 pr-14 py-4 bg-gray-50 border-4 border-transparent focus:border-blue-400 focus:bg-white rounded-[2rem] text-lg font-bold outline-none transition-all shadow-inner tracking-widest" 
+          />
+          <button type="submit" className="absolute right-3 top-1/2 -translate-y-1/2 p-3 bg-blue-500 text-white rounded-2xl hover:bg-blue-600 shadow-lg active:scale-95 transition-all">
+            <Search className="h-6 w-6" />
+          </button>
+        </form>
+
+        {targetGroup && (
+          <form onSubmit={handleSubmit} className="space-y-4 animate-in fade-in border-t border-gray-100 pt-6 mt-6">
+            <div className="text-center mb-6">
+              <span className="bg-blue-100 text-blue-700 px-4 py-1.5 rounded-full text-sm font-black">
+                {targetGroup.name} からの報告
+              </span>
+            </div>
+            
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">報告カテゴリ</label>
+              <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full border-2 border-gray-100 p-4 rounded-2xl text-sm font-bold bg-white outline-none focus:border-blue-500">
+                <option value="施設・設備について">施設・設備について（破損・汚れなど）</option>
+                <option value="備品について">備品について（ネットの破れ・ボール不足など）</option>
+                <option value="その他">その他のお気づきの点</option>
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">内容詳細 *</label>
+              <textarea required value={message} onChange={(e) => setMessage(e.target.value)} placeholder="例：Aコート側のネットが破れています。" className="w-full border-2 border-transparent bg-gray-50 p-4 rounded-2xl text-sm font-bold outline-none focus:bg-white focus:border-blue-500 shadow-inner h-32" />
+            </div>
+
+            <button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold text-lg hover:bg-blue-700 shadow-lg active:scale-95 transition-all disabled:bg-gray-300 mt-4 flex items-center justify-center">
+              {isSubmitting ? <><Loader2 className="animate-spin mr-2"/> 送信中...</> : '管理者に報告を送信'}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AdminDashboard({ reservations, closedDays, groups, reports, currentAnnouncement, onStatusUpdate }) {
   const [printWeekStart, setPrintWeekStart] = useState(formatDateStr(new Date()));
   const [showPrintView, setShowPrintView] = useState(false);
   
@@ -1385,6 +1498,16 @@ function AdminDashboard({ reservations, closedDays, groups, currentAnnouncement,
     if (window.confirm('この予約データを完全に削除しますか？\n（※利用者のペナルティ枠からも消去され、枠が戻ります）')) {
       await deleteDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', id));
       onStatusUpdate();
+    }
+  };
+
+  // 報告のステータスを更新する関数を追加
+  const updateReportStatus = async (id, status) => {
+    try {
+      await updateDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'reports', id), { status });
+      onStatusUpdate();
+    } catch (err) {
+      alert("ステータスの更新に失敗しました");
     }
   };
 
@@ -1530,6 +1653,42 @@ function AdminDashboard({ reservations, closedDays, groups, currentAnnouncement,
           <Download className="h-4 w-4" /><span>CSV出力(Excel用)</span>
         </button>
       </div>
+
+      {/* --- 利用者からの報告一覧セクションを追加 --- */}
+      <section className="bg-orange-50/30 p-6 rounded-[2rem] border-2 border-orange-100 shadow-xl">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b-2 border-orange-100 pb-4 gap-4">
+          <h3 className="font-bold text-xl text-orange-900 flex items-center">
+             <MessageSquare className="mr-2 h-6 w-6 text-orange-500" /> 利用者からの報告・連絡（未対応: {reports.filter(r => r.status === 'unread').length}件）
+          </h3>
+        </div>
+        <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
+          {reports.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).length === 0 ? <p className="text-center text-orange-300 py-10 font-bold">現在、報告はありません</p> : reports.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).map(rep => (
+            <div key={rep.id} className={`bg-white p-5 rounded-2xl border shadow-sm flex flex-col md:flex-row justify-between gap-4 transition-all ${rep.status === 'resolved' ? 'opacity-60 bg-gray-50 border-gray-200' : 'border-orange-300 ring-2 ring-orange-100'}`}>
+              <div className="flex-1 space-y-2">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className={`text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider ${rep.category.includes('施設') ? 'bg-blue-100 text-blue-700' : rep.category.includes('備品') ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-700'}`}>
+                    {rep.category}
+                  </span>
+                  <span className="text-sm font-bold text-gray-800">{rep.groupName}</span>
+                  <span className="text-xs font-bold text-gray-400">{new Date(rep.createdAt).toLocaleString([], {year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'})}</span>
+                </div>
+                <div className="text-sm font-bold text-gray-700 whitespace-pre-wrap pt-2 leading-relaxed">{rep.message}</div>
+              </div>
+              <div className="flex flex-row md:flex-col gap-2 min-w-[140px] justify-center items-end">
+                {rep.status === 'unread' ? (
+                  <button onClick={()=>updateReportStatus(rep.id, 'resolved')} className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 bg-orange-100 text-orange-700 font-bold text-[11px] hover:bg-orange-200 rounded-xl shadow-sm active:scale-95 transition-all">
+                    <CheckSquare className="w-4 h-4" /> 対応済みにする
+                  </button>
+                ) : (
+                  <button onClick={()=>updateReportStatus(rep.id, 'unread')} className="w-full flex items-center justify-center gap-1.5 px-4 py-2 bg-gray-100 text-gray-500 font-bold text-[11px] hover:bg-gray-200 rounded-xl border border-gray-200 active:scale-95 transition-all">
+                    <RotateCcw className="w-3 h-3" /> 未対応に戻す
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         
@@ -1724,7 +1883,7 @@ function AdminDashboard({ reservations, closedDays, groups, currentAnnouncement,
       </div>
       
       <section>
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b-2 border-blue-50 pb-4 gap-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b-2 border-blue-50 pb-4 gap-4 mt-12">
           <h3 className="font-bold text-xl text-blue-900 flex items-center">
              <Calendar className="mr-2 h-6 w-6" /> 全予約リスト（{filteredAndSortedReservations.length}件）
           </h3>
