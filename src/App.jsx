@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban, Mail, Key, UserCheck, MousePointerClick } from 'lucide-react';
+import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban, Mail, Key, UserCheck, MousePointerClick, RotateCcw, Filter } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, query, writeBatch } from 'firebase/firestore';
@@ -21,17 +21,14 @@ const db = getFirestore(app);
 const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'kaiteki-gym-production-v2';
 const safeAppId = String(rawAppId).replace(/\//g, '-');
 
-// --- セキュリティ用パスワード設定 ---
 const PORTAL_PASSWORD = "kaiteki-user";
 const ADMIN_PASSWORD = "admin123";
 
-// --- 初期登録団体リスト（authIdを追加） ---
+// --- 初期登録団体リスト ---
 const INITIAL_GROUPS = [
-  // 会社の部活（次年度の3/31まで）
   { name: 'MCCバレー', type: 'mcc', authId: 'M1001' },
   { name: 'MCC卓球', type: 'mcc', authId: 'M1002' },
   { name: 'MCCバドミントン', type: 'mcc', authId: 'M1003' },
-  // 従業員利用（3ヶ月先まで）
   { name: '佐野（富山北FC）', type: 'employee', authId: 'E1001' },
   { name: '朝岡（FC ALVA)', type: 'employee', authId: 'E1002' },
   { name: '斉藤（和合ハンドボール）', type: 'employee', authId: 'E1003' },
@@ -43,7 +40,6 @@ const INITIAL_GROUPS = [
   { name: '吉岡（富山ドリームズ）', type: 'employee', authId: 'E1009' },
   { name: '梅田', type: 'employee', authId: 'E1010' },
   { name: '古金(BC)', type: 'employee', authId: 'E1011' },
-  // 一般・外部（2ヶ月先まで）
   { name: 'BRABBTS', type: 'external', authId: 'G1001' },
   { name: '富山ダルク', type: 'external', authId: 'G1002' },
   { name: 'Rey華繚乱', type: 'external', authId: 'G1003' },
@@ -55,7 +51,6 @@ const INITIAL_GROUPS = [
   { name: '北中女子ソフトテニス部', type: 'external', authId: 'G1009' }
 ];
 
-// --- 貸出備品（全団体・個人共通で利用可能） ---
 const equipmentForAll = [
   'バドミントン用器具（ポール・ネット）',
   'ビーチボールバレー用器具（ポール・ネット・審判台）',
@@ -67,7 +62,6 @@ const equipmentForAll = [
   '卓球ラケット'
 ];
 
-// --- タイムライン用の定数 ---
 const TIME_SLOTS = [
   "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", 
   "12:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", 
@@ -78,7 +72,6 @@ const END_TIMES = [
   "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30",
   "17:00", "17:30", "18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00"
 ];
-// コートの並び順
 const RESOURCES = [
   { id: 'A', name: 'コートA (用具側)', type: '体育館' },
   { id: 'B', name: 'コートB (用具側)', type: '体育館' },
@@ -104,7 +97,6 @@ const isTimeOverlapping = (start1, end1, start2, end2) => {
   return start1 < end2 && start2 < end1;
 };
 
-// 時間計算ユーティリティ（分単位で計算）
 const calculateDurationMinutes = (start, end) => {
   if (!start || !end) return 0;
   const [sH, sM] = start.split(':').map(Number);
@@ -159,7 +151,6 @@ function InputField({ label, value, onChange, placeholder, type = "text" }) {
   );
 }
 
-// タイムライングリッドセレクター
 function TimeGridSelector({ selectedDate, reservations, currentStartTime, currentEndTime, currentFacilities, currentCourts, onSelectionChange }) {
   const [dragStart, setDragStart] = useState(null);
   const [dragCurrent, setDragCurrent] = useState(null);
@@ -339,7 +330,6 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     
-    // 予約データの取得
     const resRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'reservations');
     const unsubRes = onSnapshot(resRef, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -350,18 +340,15 @@ export default function App() {
       setIsLoading(false); 
     });
 
-    // 休館日データの取得
     const closedRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'closed_days');
     const unsubClosed = onSnapshot(closedRef, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setClosedDays(data);
     });
 
-    // 団体マスタの取得と初期化
     const groupsRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'groups');
     const unsubGroups = onSnapshot(groupsRef, (snapshot) => {
       if (snapshot.empty) {
-        // 初期データをFirebaseに登録する
         const batch = writeBatch(db);
         INITIAL_GROUPS.forEach(g => {
           const docRef = doc(groupsRef);
@@ -370,7 +357,6 @@ export default function App() {
         batch.commit();
       } else {
         const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        // 名前順でソート
         setGroups(data.sort((a,b) => a.name.localeCompare(b.name, 'ja')));
       }
     });
@@ -673,7 +659,6 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringEndDate, setRecurringEndDate] = useState('');
 
-  // 認証IDが入力されるたびにグループを検索して設定
   useEffect(() => {
     const g = groups.find(group => group.authId === authIdInput.trim());
     if (g) {
@@ -827,6 +812,10 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
 
       // 既存の「同月・同団体」の予約を取得（キャンセル済みも含めて集計する！）
       const existingResInMonth = reservations.filter(r => {
+        // 「個人利用」の場合は、団体名＋代表者名でユニーク判定して集計する
+        if (formData.name.includes('個人')) {
+          return r.name === formData.name && r.repName === formData.repName && r.date.startsWith(monthStr);
+        }
         return r.groupId === formData.groupId && r.date.startsWith(monthStr);
       });
       
@@ -894,7 +883,6 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
         施設利用申し込み
       </h2>
 
-      {/* 個人情報不要の案内文 */}
       <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-2xl shadow-sm text-sm text-blue-900">
         <p className="font-bold flex items-center mb-1"><Info className="w-5 h-5 mr-2" /> セキュリティと利便性に関するお知らせ</p>
         <p className="leading-relaxed">
@@ -1112,10 +1100,8 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
 function CancelView({ reservations, groups, onSuccess }) {
   const [authIdInput, setAuthIdInput] = useState('');
   const [targetGroup, setTargetGroup] = useState(null);
-  
   const [inputDeletePass, setInputDeletePass] = useState('');
 
-  // IDから自団体を検索
   const handleSearch = (e) => {
     e.preventDefault();
     const g = groups.find(group => group.authId === authIdInput.trim());
@@ -1226,21 +1212,41 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupType, setNewGroupType] = useState('external');
   const [newGroupAuthId, setNewGroupAuthId] = useState('');
+  
+  // 団体管理用のフィルタリングステート
+  const [groupSearchTerm, setGroupSearchTerm] = useState('');
 
-  // キャンセル処理（ペナルティの有無を選択）
-  const cancelReservation = async (id, isHardDelete) => {
-    if (isHardDelete) {
-      if (window.confirm('この予約データを完全に削除しますか？\n（※利用者のペナルティ枠からも消去され、枠が戻ります）')) {
-        await deleteDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', id));
-        onStatusUpdate();
-      }
-    } else {
-      if (window.confirm('この予約を「キャンセル済」として処理しますか？\n（※月20時間の利用枠は消費したままになります）')) {
-        await updateDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', id), {
-          status: 'cancelled'
-        });
-        onStatusUpdate();
-      }
+  // 区分ごとの最新ID目安を計算
+  const nextIdGuides = useMemo(() => {
+    const mccIds = groups.filter(g => g.type === 'mcc').map(g => parseInt(g.authId.replace('M', ''))).filter(n => !isNaN(n));
+    const empIds = groups.filter(g => g.type === 'employee').map(g => parseInt(g.authId.replace('E', ''))).filter(n => !isNaN(n));
+    const extIds = groups.filter(g => g.type === 'external').map(g => parseInt(g.authId.replace('G', ''))).filter(n => !isNaN(n));
+    
+    return {
+      mcc: `M${Math.max(1000, ...mccIds) + 1}`,
+      employee: `E${Math.max(1000, ...empIds) + 1}`,
+      external: `G${Math.max(1000, ...extIds) + 1}`
+    };
+  }, [groups]);
+
+  const filteredGroups = useMemo(() => {
+    if (!groupSearchTerm.trim()) return groups;
+    return groups.filter(g => 
+      g.name.includes(groupSearchTerm) || g.authId.includes(groupSearchTerm.toUpperCase())
+    );
+  }, [groups, groupSearchTerm]);
+
+  const updateReservationStatus = async (id, status) => {
+    if (window.confirm(`この予約のステータスを「${status === 'approved' ? '予約確定' : 'キャンセル済'}」に変更しますか？`)) {
+      await updateDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', id), { status });
+      onStatusUpdate();
+    }
+  };
+
+  const deleteReservationPermanent = async (id) => {
+    if (window.confirm('この予約データを完全に削除しますか？\n（※利用者のペナルティ枠からも消去され、枠が戻ります）')) {
+      await deleteDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', id));
+      onStatusUpdate();
     }
   };
 
@@ -1251,7 +1257,7 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
       await addDoc(collection(db, 'artifacts', safeAppId, 'public', 'data', 'groups'), {
         name: newGroupName,
         type: newGroupType,
-        authId: newGroupAuthId.trim(),
+        authId: newGroupAuthId.trim().toUpperCase(),
         createdAt: new Date().toISOString()
       });
       setNewGroupName('');
@@ -1267,6 +1273,17 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
         onStatusUpdate();
       } catch (err) { alert("削除に失敗しました"); }
     }
+  };
+
+  const launchEmailToReservedUsers = (targetDates) => {
+    const reservedUsersInPeriod = reservations.filter(r => targetDates.includes(r.date) && r.email && r.status !== 'cancelled');
+    if (reservedUsersInPeriod.length === 0) return;
+    const uniqueEmails = [...new Set(reservedUsersInPeriod.map(u => u.email))];
+    const toField = uniqueEmails.join(',');
+    const periodDisplay = targetDates.length > 1 ? `${targetDates[0]} 〜 ${targetDates[targetDates.length - 1]}` : targetDates[0];
+    const subject = encodeURIComponent("【重要】KAITEKI体育館 施設休館に伴う予約キャンセルのお知らせ");
+    const body = encodeURIComponent(`予約責任者様\n\n施設休館に伴う予約取り消しのお知らせです。\n\n【休館期間】\n${periodDisplay}\n${closedReason ? `【理由】\n${closedReason}\n` : ''}\n本件に関するお問い合わせは管理担当までお願いいたします。\n`);
+    window.location.href = `mailto:${toField}?cc=${ADMIN_CC_EMAIL}&subject=${subject}&body=${body}`;
   };
 
   const addClosedPeriod = async (e) => {
@@ -1292,6 +1309,7 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
         }
       });
       await batch.commit();
+      launchEmailToReservedUsers(targetDates);
       setClosedStart(''); setClosedEnd(''); setClosedReason('');
       onStatusUpdate();
     } catch (err) { alert("保存失敗"); }
@@ -1304,7 +1322,6 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
     }
   };
 
-  // CSV出力から個人情報項目を削除
   const exportToCSV = () => {
     const headers = ["ステータス", "利用日", "開始", "終了", "場所", "コート", "団体名", "使用人数"];
     const rows = reservations.map(r => [
@@ -1335,7 +1352,7 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
           <h2 className="text-3xl font-black flex items-center text-blue-950 tracking-tight">
             <ShieldCheck className="mr-3 h-10 w-10 text-blue-600"/> 管理者メニュー
           </h2>
-          <p className="text-xs font-bold text-gray-500 mt-1">システムの設定とデータの出力を行います</p>
+          <p className="text-xs font-bold text-gray-500 mt-1">システムの管理とデータの出力を行います</p>
         </div>
         <button onClick={exportToCSV} className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm hover:bg-green-700 shadow-lg active:scale-95 transition-all">
           <Download className="h-4 w-4" /><span>CSV出力(Excel用)</span>
@@ -1343,51 +1360,79 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-
-        {/* 新機能：登録団体管理 */}
-        <div className="bg-white p-6 rounded-[2rem] border-2 border-indigo-50 shadow-xl space-y-4 lg:col-span-2">
-          <div className="flex justify-between items-center">
-            <h3 className="font-bold text-lg flex items-center text-indigo-900"><Users className="h-5 w-5 mr-2" /> 利用団体の管理 (事前登録)</h3>
-            <p className="text-[10px] text-gray-400 font-bold bg-gray-50 px-2 py-1 rounded">※ここで設定した「認証ID」を各団体へ通知してください</p>
+        
+        {/* 1. 団体管理セクション（強化版） */}
+        <div className="bg-white p-6 rounded-[2rem] border-2 border-indigo-50 shadow-xl space-y-6 lg:col-span-2">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-indigo-50 pb-4">
+            <h3 className="font-bold text-lg flex items-center text-indigo-900"><Users className="h-5 w-5 mr-2" /> 利用団体の管理</h3>
+            <div className="flex items-center bg-gray-100 px-3 py-2 rounded-xl text-[10px] font-bold text-gray-500 gap-4">
+              <span>採番ルール：</span>
+              <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-purple-400" /> MCC系 = M</span>
+              <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-400" /> 従業員 = E</span>
+              <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-green-400" /> 一般団 = G</span>
+            </div>
           </div>
           
-          <form onSubmit={handleAddGroup} className="flex flex-col sm:flex-row gap-2">
-            <input type="text" required placeholder="新規団体名・個人名など" value={newGroupName} onChange={(e)=>setNewGroupName(e.target.value)} className="flex-1 border p-3 rounded-xl text-sm font-bold outline-none focus:border-indigo-500" />
-            <select value={newGroupType} onChange={(e)=>setNewGroupType(e.target.value)} className="border p-3 rounded-xl text-sm font-bold bg-white outline-none focus:border-indigo-500">
-              <option value="external">一般・団体</option>
-              <option value="employee">従業員</option>
-              <option value="mcc">会社の部活 (MCC)</option>
-            </select>
-            <input type="text" required placeholder="認証ID (半角英数)" value={newGroupAuthId} onChange={(e)=>setNewGroupAuthId(e.target.value)} className="w-32 border p-3 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 tracking-widest" />
-            <button type="submit" className="bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold text-sm hover:bg-indigo-700 shadow-lg transition-all active:scale-95 whitespace-nowrap">追加</button>
+          <form onSubmit={handleAddGroup} className="grid grid-cols-1 sm:grid-cols-12 gap-3 bg-indigo-50/30 p-4 rounded-2xl border border-indigo-100">
+            <div className="sm:col-span-4">
+              <label className="text-[9px] font-black text-indigo-400 uppercase tracking-widest px-1 block mb-1">団体・個人名</label>
+              <input type="text" required placeholder="例：MCCテニス部" value={newGroupName} onChange={(e)=>setNewGroupName(e.target.value)} className="w-full border p-2.5 rounded-xl text-sm font-bold outline-none focus:border-indigo-500" />
+            </div>
+            <div className="sm:col-span-3">
+              <label className="text-[9px] font-black text-indigo-400 uppercase tracking-widest px-1 block mb-1">利用者区分</label>
+              <select value={newGroupType} onChange={(e)=>setNewGroupType(e.target.value)} className="w-full border p-2.5 rounded-xl text-sm font-bold bg-white outline-none focus:border-indigo-500">
+                <option value="external">一般・団体</option>
+                <option value="employee">従業員</option>
+                <option value="mcc">会社の部活 (MCC)</option>
+              </select>
+            </div>
+            <div className="sm:col-span-3">
+              <label className="text-[9px] font-black text-indigo-400 uppercase tracking-widest px-1 block mb-1">認証ID (推奨: {nextIdGuides[newGroupType]})</label>
+              <input type="text" required placeholder="IDを入力" value={newGroupAuthId} onChange={(e)=>setNewGroupAuthId(e.target.value)} className="w-full border p-2.5 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 tracking-widest font-mono" />
+            </div>
+            <div className="sm:col-span-2 flex items-end">
+              <button type="submit" className="w-full bg-indigo-600 text-white py-2.5 rounded-xl font-bold text-sm hover:bg-indigo-700 shadow-lg active:scale-95 transition-all">追加登録</button>
+            </div>
           </form>
 
-          <div className="pt-4 border-t border-indigo-50">
-             <div className="max-h-60 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pr-1">
-              {groups.map(g => (
-                <div key={g.id} className="flex justify-between items-center bg-indigo-50/50 p-3 rounded-xl border border-indigo-100">
+          <div className="space-y-4">
+            <div className="relative">
+              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input 
+                type="text" 
+                placeholder="登録リストから検索（名前・ID）..." 
+                value={groupSearchTerm} 
+                onChange={(e) => setGroupSearchTerm(e.target.value)} 
+                className="w-full pl-10 pr-4 py-2.5 border rounded-xl text-sm focus:border-indigo-500 outline-none bg-gray-50/50" 
+              />
+            </div>
+            <div className="max-h-64 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pr-1">
+              {filteredGroups.map(g => (
+                <div key={g.id} className="flex justify-between items-center bg-white p-3 rounded-xl border border-gray-100 shadow-sm hover:border-indigo-200 transition-all">
                   <div className="flex flex-col">
-                    <span className="text-sm font-bold text-gray-800">{g.name}</span>
+                    <span className="text-sm font-black text-gray-800 truncate max-w-[150px]">{g.name}</span>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase ${g.type === 'mcc' ? 'bg-purple-100 text-purple-700' : g.type === 'employee' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                      <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase ${g.type === 'mcc' ? 'bg-purple-100 text-purple-700' : g.type === 'employee' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
                         {g.type === 'mcc' ? '会社の部活' : g.type === 'employee' ? '従業員' : '一般・団体'}
                       </span>
-                      <span className="text-[10px] font-mono font-bold text-gray-500 bg-white px-1.5 py-0.5 rounded border border-gray-200">ID: {g.authId}</span>
+                      <span className="text-[9px] font-mono font-bold text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded">ID: {g.authId}</span>
                     </div>
                   </div>
-                  <button onClick={()=>handleDeleteGroup(g.id)} className="text-indigo-300 hover:text-red-600 p-2 transition-colors"><Trash2 className="h-4 w-4"/></button>
+                  <button onClick={()=>handleDeleteGroup(g.id)} className="text-gray-300 hover:text-red-500 p-2 transition-colors"><Trash2 className="h-4 w-4"/></button>
                 </div>
               ))}
+              {filteredGroups.length === 0 && <p className="col-span-full text-center text-gray-400 py-6 text-xs font-bold">該当する団体がいません</p>}
             </div>
           </div>
         </div>
 
+        {/* 2. 印刷・休館設定セクション */}
         <div className="bg-white p-6 rounded-[2rem] border-2 border-blue-50 shadow-xl space-y-4 h-fit">
-          <h3 className="font-bold text-lg flex items-center text-blue-900"><Printer className="h-5 w-5 mr-2" /> 週間予定表の作成 (A3印刷用)</h3>
+          <h3 className="font-bold text-lg flex items-center text-blue-900"><Printer className="h-5 w-5 mr-2" /> 掲示用予定表 (3日間分)</h3>
           <div className="flex flex-wrap items-center gap-4">
             <input type="date" value={printWeekStart} onChange={(e)=>setPrintWeekStart(e.target.value)} className="border p-2 rounded-xl text-sm font-bold" />
-            <button onClick={()=>setShowPrintView(true)} className="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold text-sm hover:bg-blue-700 shadow flex items-center space-x-2">
-              <Printer className="h-4 w-4" /><span>印刷プレビュー</span>
+            <button onClick={()=>setShowPrintView(true)} className="bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold text-sm hover:bg-blue-700 shadow flex items-center space-x-2">
+              <Printer className="h-4 w-4" /><span>印刷プレビューへ</span>
             </button>
           </div>
         </div>
@@ -1415,28 +1460,31 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
         </div>
       </div>
       
+      {/* 3. 全予約リスト（復元機能付き） */}
       <section>
         <h3 className="font-bold text-xl text-blue-900 mb-6 border-b-2 border-blue-50 pb-2 flex items-center">
            <Calendar className="mr-2 h-6 w-6" /> 全予約リスト（{reservations.length}件）
         </h3>
-        {/* 個人情報表示を削除 */}
         <div className="space-y-4">
           {sortedReservations.length === 0 ? <p className="text-center text-gray-300 py-10 font-bold">予約データはありません</p> : sortedReservations.map(res => (
             <div key={res.id} className={`bg-white p-6 rounded-3xl border shadow-md flex flex-col md:flex-row justify-between gap-4 transition-all ${res.status === 'cancelled' ? 'opacity-60 bg-gray-50' : ''}`}>
               <div className="flex-1 space-y-1">
                 <div className="font-black text-xl">
                   {res.date} <span className="text-blue-600 ml-2">({res.startTime}-{res.endTime})</span>
-                  {res.status === 'cancelled' && <span className="ml-3 text-xs bg-red-100 text-red-600 px-2 py-1 rounded">キャンセル済（枠消費）</span>}
+                  {res.status === 'cancelled' && <span className="ml-3 text-[10px] bg-red-100 text-red-600 px-2 py-1 rounded-full border border-red-200">キャンセル済（枠消費中）</span>}
                 </div>
                 <div className="text-sm font-bold text-gray-600">{res.place} {res.courts ? `(${res.courts.join(', ')})` : ''} | {res.name}</div>
-                <div className="text-xs text-gray-400 italic flex items-center gap-4">
-                  <span>目的: {res.purpose}</span>
-                  <span className="flex items-center gap-1"><UserCheck className="h-3 w-3" /> {res.userCount}名</span>
-                </div>
+                <div className="text-xs text-gray-400 italic">目的: {res.purpose} | {res.userCount}名</div>
               </div>
-              <div className="flex flex-col gap-2 min-w-[120px]">
-                <button onClick={()=>cancelReservation(res.id, false)} className="px-4 py-2 bg-yellow-50 text-yellow-700 font-bold text-xs hover:bg-yellow-100 rounded-xl transition-colors border border-yellow-200">取消(枠消費)</button>
-                <button onClick={()=>cancelReservation(res.id, true)} className="px-4 py-2 bg-red-50 text-red-600 font-bold text-xs hover:bg-red-100 rounded-xl transition-colors border border-red-200">完全削除(枠戻す)</button>
+              <div className="flex flex-row md:flex-col gap-2 min-w-[140px]">
+                {res.status === 'cancelled' ? (
+                  <button onClick={()=>updateReservationStatus(res.id, 'approved')} className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 bg-blue-50 text-blue-700 font-bold text-[10px] hover:bg-blue-100 rounded-xl border border-blue-200">
+                    <RotateCcw className="w-3 h-3" /> 予約を復元する
+                  </button>
+                ) : (
+                  <button onClick={()=>updateReservationStatus(res.id, 'cancelled')} className="flex-1 px-4 py-2 bg-yellow-50 text-yellow-700 font-bold text-[10px] hover:bg-yellow-100 rounded-xl border border-yellow-200">取消(枠消費)</button>
+                )}
+                <button onClick={()=>deleteReservationPermanent(res.id)} className="px-4 py-2 bg-red-50 text-red-600 font-bold text-[10px] hover:bg-red-100 rounded-xl border border-red-200">完全消去(枠戻す)</button>
               </div>
             </div>
           ))}
@@ -1446,26 +1494,24 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
   );
 }
 
-// --- 印刷用タイムラインビュー ---
+// --- 印刷用 3日間タイムラインビュー ---
 function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
   const weekStart = new Date(weekStartStr);
-  const weekDays = Array.from({ length: 7 }, (_, i) => {
+  // 今日から3日間分の日付を生成
+  const displayDays = Array.from({ length: 3 }, (_, i) => {
     const d = new Date(weekStart);
     d.setDate(weekStart.getDate() + i);
     return formatDateStr(d);
   });
   
-  // 印刷画面も A~C（用具側）→ D~F（入口側）の順に変更
   const courts = ['A', 'B', 'C', 'D', 'E', 'F'];
   const closedDateStrs = closedDays.map(cd => cd.date);
   const dayLabels = ['日','月','火','水','木','金','土'];
 
-  // 印刷時に背景色と線を強制出力するためのCSS
-  // @page { size: landscape; } を追加し、印刷ダイアログで最初から横向きになるように設定
   useEffect(() => {
     const style = document.createElement('style');
     style.innerHTML = `
-      @page { size: landscape; margin: 10mm; }
+      @page { size: landscape; margin: 8mm; }
       @media print { 
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } 
         body { background-color: white !important; }
@@ -1481,8 +1527,8 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
         <div className="flex items-center space-x-3">
           <Printer className="h-8 w-8 text-blue-600" />
           <div>
-            <h3 className="text-xl font-bold">週間予定表 印刷プレビュー (タイムライン形式)</h3>
-            <p className="text-xs text-gray-500 font-bold">自動的に横向きで印刷されます。</p>
+            <h3 className="text-xl font-bold">掲示用 3日間予定表 (印刷)</h3>
+            <p className="text-xs text-gray-500 font-bold">自動的に横向き設定になっています。</p>
           </div>
         </div>
         <div className="flex space-x-3">
@@ -1491,49 +1537,47 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
         </div>
       </div>
 
-      <div className="bg-white p-4 min-h-[800px] font-sans print:p-0 print:min-h-0 print:shadow-none print:border-none">
-        <div className="text-center mb-4">
-          <h2 className="text-2xl font-bold border-b-2 border-black inline-block px-10 pb-1 uppercase tracking-widest">KAITEKI体育館 週間利用予定表</h2>
-          <p className="text-sm font-bold mt-2">期間: {weekDays[0]} 〜 {weekDays[6]}</p>
+      <div className="bg-white p-4 min-h-[800px] font-sans print:p-0 print:min-h-0">
+        <div className="text-center mb-6">
+          <h2 className="text-3xl font-black border-b-4 border-black inline-block px-12 pb-2 uppercase tracking-widest">KAITEKI体育館 利用予定表 (3日間)</h2>
+          <p className="text-lg font-bold mt-2">{displayDays[0]} 〜 {displayDays[2]}</p>
         </div>
         
-        <table className="w-full table-fixed border-collapse border border-gray-800 text-[10px]">
+        <table className="w-full table-fixed border-collapse border-2 border-black text-[10px]">
           <thead>
             <tr className="bg-gray-200">
-              <th className="border border-gray-800 p-1 w-[8%]">日付</th>
-              <th className="border border-gray-800 p-1 w-[12%]">施設 / コート</th>
+              <th className="border-2 border-black p-1 w-[10%]">日付</th>
+              <th className="border-2 border-black p-1 w-[12%]">施設 / コート</th>
               {TIME_SLOTS.map(t => (
-                <th key={t} className="border border-gray-800 p-0.5 font-mono text-[8px] sm:text-[9px]">
+                <th key={t} className="border border-black p-0.5 font-mono text-[9px]">
                   {t.replace(/^0/, '')}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {weekDays.map(d => {
+            {displayDays.map(d => {
               const dateObj = new Date(d);
               const isClosed = closedDateStrs.includes(d);
               const dayLabel = `${d.split('-')[1]}/${d.split('-')[2]} (${dayLabels[dateObj.getDay()]})`;
-              const dayColor = dateObj.getDay() === 0 ? 'text-red-600' : dateObj.getDay() === 6 ? 'text-blue-600' : 'text-gray-900';
+              const dayColor = dateObj.getDay() === 0 ? 'text-red-600' : dateObj.getDay() === 6 ? 'text-blue-600' : 'text-black';
 
               return (
                 <React.Fragment key={d}>
                   {RESOURCES.map((res, rIndex) => {
                     return (
-                      <tr key={`${d}-${res.id}`}>
-                        {/* 日付セルを結合 */}
+                      <tr key={`${d}-${res.id}`} className="h-10">
                         {rIndex === 0 && (
-                          <td rowSpan={RESOURCES.length} className={`border border-gray-800 p-1 text-center font-bold bg-gray-50 ${dayColor} whitespace-nowrap`}>
+                          <td rowSpan={RESOURCES.length} className={`border-2 border-black p-1 text-center font-black bg-gray-50 ${dayColor} text-sm whitespace-nowrap`}>
                             {dayLabel}
-                            {isClosed && <div className="text-[8px] text-red-500 mt-1 font-black">休館日</div>}
+                            {isClosed && <div className="text-[10px] text-red-500 mt-2 font-black">【休館】</div>}
                           </td>
                         )}
-                        <td className="border border-gray-800 p-1 font-bold bg-gray-50 text-gray-700 whitespace-nowrap text-center">
-                          {res.id === '多目的室' ? res.name : `コート${res.id} `}
-                          {res.id !== '多目的室' && <span className="text-[7px] text-gray-400">({['A','B','C'].includes(res.id) ? '用具側' : '入口側'})</span>}
+                        <td className="border border-black p-1 font-bold bg-gray-50 text-gray-700 whitespace-nowrap text-center text-[11px]">
+                          {res.id === '多目的室' ? '多目的室' : `コート${res.id} `}
+                          {res.id !== '多目的室' && <span className="text-[8px] text-gray-400">({['A','B','C'].includes(res.id) ? '用具' : '入口'})</span>}
                         </td>
                         
-                        {/* タイムラインのセル */}
                         {(() => {
                           const cells = [];
                           let cIndex = 0;
@@ -1542,7 +1586,7 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                             const end = END_TIMES[cIndex];
 
                             if (isClosed) {
-                              cells.push(<td key={start} className="border border-gray-400 bg-gray-200/50 bg-[repeating-linear-gradient(45deg,transparent,transparent_2px,rgba(0,0,0,0.1)_2px,rgba(0,0,0,0.1)_4px)]"></td>);
+                              cells.push(<td key={start} className="border border-black bg-gray-200/50 bg-[repeating-linear-gradient(45deg,transparent,transparent_2px,rgba(0,0,0,0.1)_2px,rgba(0,0,0,0.1)_4px)]"></td>);
                               cIndex++;
                               continue;
                             }
@@ -1556,7 +1600,6 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                             });
 
                             if (matchingRes) {
-                              // 連続するスロットをカウント
                               let span = 1;
                               let nextIndex = cIndex + 1;
                               while (nextIndex < TIME_SLOTS.length) {
@@ -1571,12 +1614,11 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                               }
 
                               const bgColor = matchingRes.userType === 'mcc' ? 'bg-purple-200' : matchingRes.userType === 'employee' ? 'bg-blue-200' : 'bg-green-200';
-                              const borderColor = matchingRes.userType === 'mcc' ? 'border-purple-400' : matchingRes.userType === 'employee' ? 'border-blue-400' : 'border-green-400';
                               
                               cells.push(
-                                <td key={start} colSpan={span} className={`border border-gray-800 ${bgColor} p-0 relative`}>
-                                  <div className="absolute inset-0 flex items-center justify-center p-1 overflow-hidden">
-                                    <span className={`font-bold text-gray-800 leading-tight text-center break-words ${span > 1 ? 'text-[9px]' : 'text-[7px]'}`}>
+                                <td key={start} colSpan={span} className={`border-2 border-black ${bgColor} p-0 relative`}>
+                                  <div className="absolute inset-0 flex items-center justify-center p-0.5 overflow-hidden">
+                                    <span className="font-black text-black leading-tight text-center break-words text-[11px]">
                                       {matchingRes.name}
                                     </span>
                                   </div>
@@ -1593,19 +1635,19 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                       </tr>
                     );
                   })}
+                  {/* 日付ごとの区切りを太くする */}
+                  <tr className="h-1 bg-black"><td colSpan={TIME_SLOTS.length + 1}></td></tr>
                 </React.Fragment>
               );
             })}
           </tbody>
         </table>
         
-        {/* 印刷用の凡例 */}
-        <div className="mt-4 flex justify-between items-end text-[10px] font-bold text-gray-600">
-          <div className="flex space-x-4">
-            <span className="flex items-center"><span className="w-3 h-3 bg-purple-200 border border-purple-400 inline-block mr-1"></span>会社の部活</span>
-            <span className="flex items-center"><span className="w-3 h-3 bg-blue-200 border border-blue-400 inline-block mr-1"></span>従業員</span>
-            <span className="flex items-center"><span className="w-3 h-3 bg-green-200 border border-green-400 inline-block mr-1"></span>一般・団体</span>
-            <span className="flex items-center"><span className="w-3 h-3 bg-gray-200 border border-gray-400 bg-[repeating-linear-gradient(45deg,transparent,transparent_2px,rgba(0,0,0,0.1)_2px,rgba(0,0,0,0.1)_4px)] inline-block mr-1"></span>休館</span>
+        <div className="mt-6 flex justify-between items-end text-[12px] font-bold text-gray-600">
+          <div className="flex space-x-6">
+            <span className="flex items-center"><span className="w-4 h-4 bg-purple-200 border-2 border-black inline-block mr-2"></span>会社の部活</span>
+            <span className="flex items-center"><span className="w-4 h-4 bg-blue-200 border-2 border-black inline-block mr-2"></span>従業員</span>
+            <span className="flex items-center"><span className="w-4 h-4 bg-green-200 border-2 border-black inline-block mr-2"></span>一般・団体</span>
           </div>
           <div>出力日時: {new Date().toLocaleString()}</div>
         </div>
@@ -1632,48 +1674,33 @@ function RulesView() {
               </div>
               <div className="pt-8 border-t-2 border-gray-100 space-y-4">
                 <p className="text-base text-blue-600 font-black tracking-tighter leading-none">日曜日もご予約・ご利用いただけます。</p>
-                <p className="text-[11px] text-gray-400 mt-2 leading-relaxed font-bold">※お盆、正月、GWなど会社カレンダーによる休館日があります。休館日はカレンダーでご確認ください。</p>
               </div>
             </div>
           </section>
           <section>
             <h3 className="flex items-center text-blue-800 text-2xl mb-8 border-l-[10px] border-blue-700 pl-6 tracking-tight font-black">② 予約可能期間・制限</h3>
             <div className="bg-blue-50 p-8 rounded-[3rem] space-y-6 shadow-inner border-2 border-white">
-              <p className="text-sm font-black text-blue-950 tracking-wide leading-none mb-4">利用者区分によって予約開始日が異なります。</p>
-              
               <div className="bg-white p-4 rounded-2xl border-2 border-purple-100 shadow-sm">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded font-black">会社の部活</span>
                   <span className="text-sm font-bold text-gray-800">次年度の3月末まで</span>
                 </div>
-                <p className="text-[10px] text-gray-500">現在から次年度の3月31日まで一括してご予約いただけます。</p>
               </div>
-
               <div className="bg-white p-4 rounded-2xl border-2 border-blue-100 shadow-sm">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded font-black">従業員</span>
                   <span className="text-sm font-bold text-gray-800">3ヶ月先まで予約可能</span>
                 </div>
-                <p className="text-[10px] text-gray-500">本日より3ヶ月先の同日までご予約いただけます。</p>
               </div>
-
               <div className="bg-white p-4 rounded-2xl border-2 border-green-100 shadow-sm">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded font-black">一般・団体</span>
                   <span className="text-sm font-bold text-gray-800">2ヶ月先まで予約可能</span>
                 </div>
-                <p className="text-[10px] text-gray-500">本日より2ヶ月先の同日までご予約いただけます。</p>
               </div>
-              
-              <div className="mt-4 space-y-3 pt-4 border-t-2 border-blue-100/50">
-                 <p className="text-xs font-black text-red-600 border-l-4 border-red-500 pl-2">【月間利用制限】 全団体共通：月20時間まで</p>
-                 <p className="text-xs font-black text-red-600 border-l-4 border-red-500 pl-2">【全面予約制限】 体育館6面の全面予約は月1回まで</p>
-                 <div className="bg-red-50 p-3 rounded-xl border border-red-100 mt-2">
-                   <p className="text-[10px] text-red-800 font-bold leading-relaxed">
-                     <AlertTriangle className="inline w-3 h-3 mr-1 mb-0.5"/>
-                     キャンセルした場合も、ペナルティとして当月の利用可能枠（20時間）を消費します。計画的なご予約をお願いいたします。
-                   </p>
-                 </div>
+              <div className="mt-4 space-y-3 pt-4 border-t-2 border-blue-100/50 text-xs font-black text-red-600">
+                 <p className="border-l-4 border-red-500 pl-2">月間利用制限：全団体共通 月20時間まで</p>
+                 <p className="border-l-4 border-red-500 pl-2">全面予約制限：体育館6面予約は月1回まで</p>
               </div>
             </div>
           </section>
@@ -1682,15 +1709,14 @@ function RulesView() {
           <h3 className="flex items-center text-blue-800 text-2xl mb-8 border-l-[10px] border-blue-700 pl-6 tracking-tight font-black">③ 遵守事項</h3>
           <ul className="space-y-6 font-bold text-gray-700">
             {[
-              { t: "予約確定", c: "予約は即時に確定されます。変更がある場合は速やかに取り消しを行ってください。" },
-              { t: "飲食禁止", c: "アリーナ内は食事厳禁。食事は2階休憩スペースか多目的室で。" },
-              { t: "清掃徹底", c: "終了後は用具を戻し、必ずモップ掛けを行ってください。ゴミは各自持ち帰り。" },
-              { t: "駐車場", c: "指定場所のみ駐車可。路上駐車禁止。路面表示、一方通行を遵守。" },
-              { t: "速度制限", c: "構内は時速20km制限。騒音にも十分配慮してください。" },
-              { t: "破損報告", c: "破損した場合は直ちに管理人に報告。実費弁償の場合があります。" }
+              { t: "飲食禁止", c: "アリーナ内は食事厳禁。食事は2階休憩スペースで。" },
+              { t: "清掃徹底", c: "終了後は必ずモップ掛け。ゴミは各自持ち帰り。" },
+              { t: "駐車場", c: "指定場所のみ。路上駐車禁止。一方通行を遵守。" },
+              { t: "速度制限", c: "構内は時速20km制限。騒音に配慮してください。" },
+              { t: "破損報告", c: "破損した場合は直ちに管理人(DRIX)へ報告。" }
             ].map((rule, i) => (
-              <li key={i} className="flex items-start bg-gray-50/80 p-6 rounded-[2.5rem] border-2 border-transparent hover:border-blue-100 hover:bg-white transition-all">
-                <span className="bg-blue-600 text-white w-9 h-9 rounded-full flex items-center justify-center text-xs mr-5 mt-1 flex-shrink-0 shadow shadow-blue-200 font-black">{i+1}</span>
+              <li key={i} className="flex items-start bg-gray-50/80 p-6 rounded-[2.5rem] border-2 border-transparent hover:border-blue-100 transition-all">
+                <span className="bg-blue-600 text-white w-9 h-9 rounded-full flex items-center justify-center text-xs mr-5 mt-1 flex-shrink-0 font-black shadow-lg">{i+1}</span>
                 <div>
                   <p className="text-blue-900 text-[10px] font-black uppercase mb-1 opacity-60 tracking-widest">{rule.t}</p>
                   <p className="leading-relaxed text-base tracking-tight text-gray-800">{rule.c}</p>
