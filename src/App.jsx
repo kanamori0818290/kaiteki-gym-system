@@ -1308,6 +1308,22 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
     }
   };
 
+  // 区分（mcc / employee / external）を変更する関数を追加
+  const updateGroupType = async (id, currentType, newType) => {
+    if (currentType === newType) return;
+    const typeLabels = { 'mcc': '会社の部活', 'employee': '従業員', 'external': '一般・団体' };
+    if (window.confirm(`この団体の区分を「${typeLabels[newType]}」に変更しますか？`)) {
+      try {
+        await updateDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'groups', id), {
+          type: newType
+        });
+        onStatusUpdate();
+      } catch (err) {
+        alert("更新に失敗しました");
+      }
+    }
+  };
+
   // 枠制限を 20 -> 30 -> unlimited と切り替える
   const toggleLimitType = async (id, currentType) => {
     const types = ['20', '30', 'unlimited'];
@@ -1474,9 +1490,16 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
                     <div className="flex flex-col">
                       <span className="text-sm font-black text-gray-800 truncate max-w-[150px]">{g.name}</span>
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase ${g.type === 'mcc' ? 'bg-purple-100 text-purple-700' : g.type === 'employee' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
-                          {g.type === 'mcc' ? '会社の部活' : g.type === 'employee' ? '従業員' : '一般・団体'}
-                        </span>
+                        {/* 単なるspanからselect要素に変更 */}
+                        <select 
+                          value={g.type} 
+                          onChange={(e) => updateGroupType(g.id, g.type, e.target.value)}
+                          className={`text-[9px] font-black px-2 py-0.5 rounded uppercase outline-none cursor-pointer border-b-2 hover:brightness-95 transition-all ${g.type === 'mcc' ? 'bg-purple-100 text-purple-700 border-purple-200' : g.type === 'employee' ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-green-100 text-green-700 border-green-200'}`}
+                        >
+                          <option value="mcc" className="bg-white text-gray-800 font-bold">会社の部活</option>
+                          <option value="employee" className="bg-white text-gray-800 font-bold">従業員</option>
+                          <option value="external" className="bg-white text-gray-800 font-bold">一般・団体</option>
+                        </select>
                         <span className="text-[9px] font-mono font-bold text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded">ID: {g.authId}</span>
                         {lType === 'unlimited' && <span className="text-[8px] font-black px-1.5 py-0.5 rounded uppercase bg-yellow-100 text-yellow-700 border border-yellow-200">時間無制限</span>}
                         {lType === '30' && <span className="text-[8px] font-black px-1.5 py-0.5 rounded uppercase bg-orange-100 text-orange-700 border border-orange-200">枠拡張(30h)</span>}
