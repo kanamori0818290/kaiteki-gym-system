@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban, Mail, Key, UserCheck, MousePointerClick, RotateCcw, Filter, Unlock } from 'lucide-react';
+import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban, Mail, Key, UserCheck, MousePointerClick, RotateCcw, Filter, Unlock, BarChart3 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, query, writeBatch } from 'firebase/firestore';
@@ -1220,6 +1220,9 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
   const [newGroupLimitType, setNewGroupLimitType] = useState('20'); // デフォルトは20時間
   
   const [groupSearchTerm, setGroupSearchTerm] = useState('');
+  
+  // 利用状況可視化用の対象月（初期値は今月）
+  const [usageMonth, setUsageMonth] = useState(formatDateStr(new Date()).substring(0, 7));
 
   const nextIdGuides = useMemo(() => {
     const mccIds = groups.filter(g => g.type === 'mcc').map(g => parseInt(g.authId.replace('M', ''))).filter(n => !isNaN(n));
@@ -1239,6 +1242,30 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
       g.name.includes(groupSearchTerm) || g.authId.includes(groupSearchTerm.toUpperCase())
     );
   }, [groups, groupSearchTerm]);
+
+  // 月間利用時間の集計
+  const groupUsageStats = useMemo(() => {
+    const stats = groups.map(g => ({
+      id: g.id,
+      name: g.name,
+      type: g.type,
+      limitType: g.limitType || (g.isExemptFromLimit ? 'unlimited' : '20'),
+      usedMinutes: 0
+    }));
+
+    const resInMonth = reservations.filter(r => r.date.startsWith(usageMonth));
+    
+    resInMonth.forEach(r => {
+      // 完全に削除されたもの以外（キャンセル済み＝枠消費中も含む）を集計
+      const groupStat = stats.find(s => s.id === r.groupId);
+      if (groupStat) {
+        groupStat.usedMinutes += calculateDurationMinutes(r.startTime, r.endTime);
+      }
+    });
+
+    // 使用時間が多い順にソート
+    return stats.sort((a, b) => b.usedMinutes - a.usedMinutes);
+  }, [groups, reservations, usageMonth]);
 
   const updateReservationStatus = async (id, status) => {
     if (window.confirm(`この予約のステータスを「${status === 'approved' ? '予約確定' : 'キャンセル済'}」に変更しますか？`)) {
@@ -1466,6 +1493,53 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
               })}
               {filteredGroups.length === 0 && <p className="col-span-full text-center text-gray-400 py-6 text-xs font-bold">該当する団体がいません</p>}
             </div>
+          </div>
+        </div>
+
+        {/* 2. 月間利用状況の可視化セクション */}
+        <div className="bg-white p-6 rounded-[2rem] border-2 border-cyan-50 shadow-xl space-y-4 lg:col-span-2">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-cyan-50 pb-4">
+            <div>
+              <h3 className="font-bold text-lg flex items-center text-cyan-900"><BarChart3 className="h-5 w-5 mr-2" /> 団体ごとの月間利用状況</h3>
+              <p className="text-[10px] font-bold text-gray-500 mt-1">※キャンセル済（枠消費中）の時間も含んで集計されます</p>
+            </div>
+            <input 
+              type="month" 
+              value={usageMonth} 
+              onChange={(e) => setUsageMonth(e.target.value)} 
+              className="border p-2.5 rounded-xl text-sm font-bold bg-gray-50 outline-none focus:border-cyan-500 shadow-sm" 
+            />
+          </div>
+          
+          <div className="space-y-4 max-h-80 overflow-y-auto pr-2 pt-2">
+            {groupUsageStats.map(stat => {
+              const usedHours = (stat.usedMinutes / 60).toFixed(1);
+              let limitHours = stat.limitType === '30' ? 30 : 20;
+              let isUnlimited = stat.limitType === 'unlimited';
+              
+              let percentage = isUnlimited ? (stat.usedMinutes / (30 * 60)) * 100 : (stat.usedMinutes / (limitHours * 60)) * 100;
+              if (percentage > 100) percentage = 100;
+
+              let barColor = "bg-cyan-500";
+              if (!isUnlimited) {
+                if (percentage >= 100) barColor = "bg-red-500";
+                else if (percentage >= 80) barColor = "bg-orange-400";
+              }
+
+              return (
+                <div key={stat.id} className="flex items-center justify-between gap-4 text-sm group">
+                  <div className="w-1/3 sm:w-1/4 font-bold text-gray-700 truncate" title={stat.name}>{stat.name}</div>
+                  <div className="flex-1 bg-gray-100 rounded-full h-3 relative overflow-hidden shadow-inner">
+                    <div className={`absolute top-0 left-0 h-full ${barColor} transition-all duration-500`} style={{ width: `${percentage}%` }}></div>
+                  </div>
+                  <div className="w-1/4 sm:w-1/5 text-right font-black text-gray-700 text-xs flex flex-col sm:flex-row justify-end sm:items-center sm:gap-1">
+                    <span className={percentage >= 100 && !isUnlimited ? 'text-red-600' : ''}>{usedHours}h</span>
+                    <span className="text-[10px] text-gray-400 font-bold">/ {isUnlimited ? '無制限' : `${limitHours}h`}</span>
+                  </div>
+                </div>
+              )
+            })}
+            {groupUsageStats.length === 0 && <p className="text-center text-gray-400 py-4 text-xs font-bold">データがありません</p>}
           </div>
         </div>
 
