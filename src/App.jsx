@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban, Mail, Key, UserCheck, MousePointerClick, RotateCcw, Filter, Unlock, BarChart3 } from 'lucide-react';
+import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban, Mail, Key, UserCheck, MousePointerClick, RotateCcw, Filter, Unlock, BarChart3, Megaphone } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
-import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, query, writeBatch } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, query, writeBatch, setDoc } from 'firebase/firestore';
 
 // --- Firebase 設定 ---
 const firebaseConfig = {
@@ -309,6 +309,7 @@ export default function App() {
   const [reservations, setReservations] = useState([]);
   const [closedDays, setClosedDays] = useState([]);
   const [groups, setGroups] = useState([]); // 団体マスタ
+  const [announcementText, setAnnouncementText] = useState(''); // お知らせテキスト
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -362,10 +363,21 @@ export default function App() {
       }
     });
 
+    // お知らせメッセージの取得
+    const announceRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'system_messages', 'announcement');
+    const unsubAnnounce = onSnapshot(announceRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setAnnouncementText(docSnap.data().text || '');
+      } else {
+        setAnnouncementText('');
+      }
+    });
+
     return () => {
       unsubRes();
       unsubClosed();
       unsubGroups();
+      unsubAnnounce();
     };
   }, [user]);
 
@@ -472,6 +484,17 @@ export default function App() {
           </div>
         ) : (
           <div className="w-full space-y-8 print:space-y-0">
+            {/* --- お知らせバナー (印刷時と管理画面では非表示) --- */}
+            {announcementText && activeTab !== 'admin' && (
+              <div className="bg-yellow-50 border-l-[6px] border-yellow-400 p-4 rounded-r-2xl shadow-sm flex items-start animate-in fade-in slide-in-from-top-4 print:hidden">
+                <Megaphone className="w-6 h-6 text-yellow-500 mr-3 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="text-sm font-black text-yellow-800 mb-1 tracking-tight">管理者からのお知らせ</h4>
+                  <p className="text-sm text-yellow-900 whitespace-pre-wrap font-bold leading-relaxed">{announcementText}</p>
+                </div>
+              </div>
+            )}
+
             {activeTab === 'calendar' && (
               <CalendarView 
                 reservations={reservations} 
@@ -491,7 +514,15 @@ export default function App() {
             )}
             {activeTab === 'cancel' && <CancelView reservations={reservations} groups={groups} onSuccess={() => { showToast('予約をキャンセルしました'); setActiveTab('calendar'); }} />}
             {activeTab === 'rules' && <RulesView />}
-            {activeTab === 'admin' && isAdmin && <AdminDashboard reservations={reservations} closedDays={closedDays} groups={groups} onStatusUpdate={() => showToast('更新しました')} />}
+            {activeTab === 'admin' && isAdmin && (
+              <AdminDashboard 
+                reservations={reservations} 
+                closedDays={closedDays} 
+                groups={groups} 
+                currentAnnouncement={announcementText}
+                onStatusUpdate={() => showToast('更新しました')} 
+              />
+            )}
           </div>
         )}
       </main>
@@ -1225,7 +1256,7 @@ function CancelView({ reservations, groups, onSuccess }) {
   );
 }
 
-function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
+function AdminDashboard({ reservations, closedDays, groups, currentAnnouncement, onStatusUpdate }) {
   const [printWeekStart, setPrintWeekStart] = useState(formatDateStr(new Date()));
   const [showPrintView, setShowPrintView] = useState(false);
   
@@ -1238,6 +1269,9 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
   const [newGroupAuthId, setNewGroupAuthId] = useState('');
   const [newGroupLimitType, setNewGroupLimitType] = useState('20'); // デフォルトは20時間
   
+  // お知らせ設定用
+  const [editAnnouncementText, setEditAnnouncementText] = useState('');
+
   // 団体管理用のフィルタ
   const [groupSearchTerm, setGroupSearchTerm] = useState('');
   
@@ -1247,6 +1281,23 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
   
   // 利用状況可視化用の対象月（初期値は今月）
   const [usageMonth, setUsageMonth] = useState(formatDateStr(new Date()).substring(0, 7));
+
+  // 親から渡されたお知らせを初期値にセット
+  useEffect(() => {
+    setEditAnnouncementText(currentAnnouncement);
+  }, [currentAnnouncement]);
+
+  const handleUpdateAnnouncement = async () => {
+    try {
+      await setDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'system_messages', 'announcement'), {
+        text: editAnnouncementText,
+        updatedAt: new Date().toISOString()
+      });
+      onStatusUpdate();
+    } catch (err) {
+      alert("お知らせの更新に失敗しました");
+    }
+  };
 
   const nextIdGuides = useMemo(() => {
     const mccIds = groups.filter(g => g.type === 'mcc').map(g => parseInt(g.authId.replace('M', ''))).filter(n => !isNaN(n));
@@ -1482,6 +1533,26 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         
+        {/* 0. お知らせ設定セクション */}
+        <div className="bg-yellow-50 p-6 rounded-[2rem] border-2 border-yellow-200 shadow-lg lg:col-span-2 space-y-4">
+          <h3 className="font-bold text-lg flex items-center text-yellow-800"><Megaphone className="h-5 w-5 mr-2" /> システム全体のお知らせ設定</h3>
+          <p className="text-[10px] font-bold text-yellow-700">利用者のトップ画面に目立つように表示されるメッセージです。空欄にして更新すると非表示になります。</p>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <textarea 
+              value={editAnnouncementText}
+              onChange={(e) => setEditAnnouncementText(e.target.value)}
+              placeholder="例：〇月〇日はワックスがけのため滑りやすくなっています。"
+              className="flex-1 border-2 border-transparent p-3 rounded-xl text-sm font-bold outline-none focus:border-yellow-400 bg-white shadow-inner h-20"
+            />
+            <button 
+              onClick={handleUpdateAnnouncement}
+              className="bg-yellow-500 text-white px-8 py-3 rounded-xl font-bold text-sm hover:bg-yellow-600 shadow-md active:scale-95 transition-all whitespace-nowrap self-end"
+            >
+              お知らせを更新
+            </button>
+          </div>
+        </div>
+
         <div className="bg-white p-6 rounded-[2rem] border-2 border-indigo-50 shadow-xl space-y-6 lg:col-span-2">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-indigo-50 pb-4">
             <h3 className="font-bold text-lg flex items-center text-indigo-900"><Users className="h-5 w-5 mr-2" /> 利用団体の管理</h3>
@@ -1658,7 +1729,6 @@ function AdminDashboard({ reservations, closedDays, groups, onStatusUpdate }) {
              <Calendar className="mr-2 h-6 w-6" /> 全予約リスト（{filteredAndSortedReservations.length}件）
           </h3>
           <div className="flex items-center gap-3 w-full sm:w-auto">
-            {/* CSV出力ボタンをここに移動 */}
             <button onClick={exportToCSV} className="flex items-center space-x-2 bg-green-600 text-white px-4 py-2 rounded-xl font-bold text-[11px] hover:bg-green-700 shadow-md active:scale-95 transition-all shrink-0">
               <Download className="h-4 w-4" /><span>CSV出力</span>
             </button>
