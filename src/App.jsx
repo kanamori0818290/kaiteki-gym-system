@@ -1391,6 +1391,9 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
   // 全予約リスト用のフィルタ
   const [resFilterPeriod, setResFilterPeriod] = useState('upcoming');
   const [resFilterGroup, setResFilterGroup] = useState('all');
+
+  // ★報告リスト用のフィルタ
+  const [reportFilter, setReportFilter] = useState('unread'); // デフォルトは未対応のみ
   
   // 利用状況可視化用の対象月（初期値は今月）
   const [usageMonth, setUsageMonth] = useState(formatDateStr(new Date()).substring(0, 7));
@@ -1486,6 +1489,15 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
       })
       .sort((a, b) => a.date.localeCompare(b.date) || (a.startTime || "").localeCompare(b.startTime || ""));
   }, [reservations, resFilterPeriod, resFilterGroup]);
+
+  // ★レポートのフィルタリング
+  const filteredReports = useMemo(() => {
+    let filtered = reports;
+    if (reportFilter !== 'all') {
+      filtered = reports.filter(r => r.status === reportFilter);
+    }
+    return filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  }, [reports, reportFilter]);
 
   const updateReservationStatus = async (id, status) => {
     if (window.confirm(`この予約のステータスを「${status === 'approved' ? '予約確定' : 'キャンセル済'}」に変更しますか？`)) {
@@ -1654,39 +1666,54 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
         </button>
       </div>
 
-      {/* --- 利用者からの報告一覧セクションを追加 --- */}
+      {/* --- 利用者からの報告一覧セクション --- */}
       <section className="bg-orange-50/30 p-6 rounded-[2rem] border-2 border-orange-100 shadow-xl">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 border-b-2 border-orange-100 pb-4 gap-4">
           <h3 className="font-bold text-xl text-orange-900 flex items-center">
              <MessageSquare className="mr-2 h-6 w-6 text-orange-500" /> 利用者からの報告・連絡（未対応: {reports.filter(r => r.status === 'unread').length}件）
           </h3>
+          <div className="flex items-center gap-2">
+            <select 
+              value={reportFilter} 
+              onChange={e => setReportFilter(e.target.value)} 
+              className="border-none bg-white p-2 rounded-xl text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-orange-500 text-orange-900"
+            >
+               <option value="unread">未対応のみ表示</option>
+               <option value="resolved">対応済のみ表示</option>
+               <option value="all">すべて表示</option>
+            </select>
+          </div>
         </div>
         <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
-          {reports.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).length === 0 ? <p className="text-center text-orange-300 py-10 font-bold">現在、報告はありません</p> : reports.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).map(rep => (
-            <div key={rep.id} className={`bg-white p-5 rounded-2xl border shadow-sm flex flex-col md:flex-row justify-between gap-4 transition-all ${rep.status === 'resolved' ? 'opacity-60 bg-gray-50 border-gray-200' : 'border-orange-300 ring-2 ring-orange-100'}`}>
-              <div className="flex-1 space-y-2">
-                <div className="flex items-center gap-3 flex-wrap">
-                  <span className={`text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider ${rep.category.includes('施設') ? 'bg-blue-100 text-blue-700' : rep.category.includes('備品') ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-700'}`}>
-                    {rep.category}
-                  </span>
-                  <span className="text-sm font-bold text-gray-800">{rep.groupName}</span>
-                  <span className="text-xs font-bold text-gray-400">{new Date(rep.createdAt).toLocaleString([], {year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'})}</span>
+          {filteredReports.length === 0 ? (
+            <p className="text-center text-orange-300 py-10 font-bold">該当する報告はありません</p>
+          ) : (
+            filteredReports.map(rep => (
+              <div key={rep.id} className={`bg-white p-5 rounded-2xl border shadow-sm flex flex-col md:flex-row justify-between gap-4 transition-all ${rep.status === 'resolved' ? 'opacity-60 bg-gray-50 border-gray-200' : 'border-orange-300 ring-2 ring-orange-100'}`}>
+                <div className="flex-1 space-y-2">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className={`text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider ${rep.category.includes('施設') ? 'bg-blue-100 text-blue-700' : rep.category.includes('備品') ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-700'}`}>
+                      {rep.category}
+                    </span>
+                    <span className="text-sm font-bold text-gray-800">{rep.groupName}</span>
+                    <span className="text-xs font-bold text-gray-400">{new Date(rep.createdAt).toLocaleString([], {year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit'})}</span>
+                  </div>
+                  <div className="text-sm font-bold text-gray-700 whitespace-pre-wrap pt-2 leading-relaxed">{rep.message}</div>
                 </div>
-                <div className="text-sm font-bold text-gray-700 whitespace-pre-wrap pt-2 leading-relaxed">{rep.message}</div>
+                <div className="flex flex-row md:flex-col gap-2 min-w-[140px] justify-center items-end">
+                  {rep.status === 'unread' ? (
+                    <button onClick={()=>updateReportStatus(rep.id, 'resolved')} className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 bg-orange-100 text-orange-700 font-bold text-[11px] hover:bg-orange-200 rounded-xl shadow-sm active:scale-95 transition-all">
+                      <CheckSquare className="w-4 h-4" /> 対応済みにする
+                    </button>
+                  ) : (
+                    <button onClick={()=>updateReportStatus(rep.id, 'unread')} className="w-full flex items-center justify-center gap-1.5 px-4 py-2 bg-gray-100 text-gray-500 font-bold text-[11px] hover:bg-gray-200 rounded-xl border border-gray-200 active:scale-95 transition-all">
+                      <RotateCcw className="w-3 h-3" /> 未対応に戻す
+                    </button>
+                  )}
+                </div>
               </div>
-              <div className="flex flex-row md:flex-col gap-2 min-w-[140px] justify-center items-end">
-                {rep.status === 'unread' ? (
-                  <button onClick={()=>updateReportStatus(rep.id, 'resolved')} className="w-full flex items-center justify-center gap-1.5 px-4 py-2.5 bg-orange-100 text-orange-700 font-bold text-[11px] hover:bg-orange-200 rounded-xl shadow-sm active:scale-95 transition-all">
-                    <CheckSquare className="w-4 h-4" /> 対応済みにする
-                  </button>
-                ) : (
-                  <button onClick={()=>updateReportStatus(rep.id, 'unread')} className="w-full flex items-center justify-center gap-1.5 px-4 py-2 bg-gray-100 text-gray-500 font-bold text-[11px] hover:bg-gray-200 rounded-xl border border-gray-200 active:scale-95 transition-all">
-                    <RotateCcw className="w-3 h-3" /> 未対応に戻す
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </section>
 
