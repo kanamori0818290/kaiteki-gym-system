@@ -74,12 +74,12 @@ const END_TIMES = [
   "17:00", "17:30", "18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00"
 ];
 const RESOURCES = [
-  { id: 'D', name: 'コートD (用具側)', type: '体育館' },
-  { id: 'E', name: 'コートE (用具側)', type: '体育館' },
-  { id: 'F', name: 'コートF (用具側)', type: '体育館' },
-  { id: 'A', name: 'コートA (入口側)', type: '体育館' },
-  { id: 'B', name: 'コートB (入口側)', type: '体育館' },
-  { id: 'C', name: 'コートC (入口側)', type: '体育館' },
+  { id: 'A', name: 'コートA (用具側)', type: '体育館' },
+  { id: 'B', name: 'コートB (用具側)', type: '体育館' },
+  { id: 'C', name: 'コートC (用具側)', type: '体育館' },
+  { id: 'D', name: 'コートD (入口側)', type: '体育館' },
+  { id: 'E', name: 'コートE (入口側)', type: '体育館' },
+  { id: 'F', name: 'コートF (入口側)', type: '体育館' },
   { id: '多目的室', name: '多目的室', type: '多目的室' },
 ];
 
@@ -1105,7 +1105,7 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
                       <div className="space-y-3">
                         <p className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">用具側</p>
                         <div className="flex space-x-3 justify-center">
-                          {['D', 'E', 'F'].map(c => (
+                          {['A', 'B', 'C'].map(c => (
                             <CourtButton key={c} label={c} active={selectedCourts.includes(c)} occupied={occupiedCourts.includes(c)} onClick={() => toggleCourt(c)} />
                           ))}
                         </div>
@@ -1114,7 +1114,7 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
                       <div className="space-y-3">
                         <p className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">入口側</p>
                         <div className="flex space-x-3 justify-center">
-                          {['A', 'B', 'C'].map(c => (
+                          {['D', 'E', 'F'].map(c => (
                             <CourtButton key={c} label={c} active={selectedCourts.includes(c)} occupied={occupiedCourts.includes(c)} onClick={() => toggleCourt(c)} />
                           ))}
                         </div>
@@ -1983,7 +1983,7 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
     return formatDateStr(d);
   });
   
-  const courts = ['D', 'E', 'F', 'A', 'B', 'C'];
+  const courts = ['A', 'B', 'C', 'D', 'E', 'F'];
   const closedDateStrs = closedDays.map(cd => cd.date);
   const dayLabels = ['日','月','火','水','木','金','土'];
 
@@ -2056,7 +2056,7 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                           )}
                           <td className="border-r-[3px] border-black p-1 font-bold bg-white text-gray-800 whitespace-nowrap text-center text-[10px] print:text-[8px]">
                             {res.id === '多目的室' ? '多目的室' : `コート${res.id} `}
-                            {res.id !== '多目的室' && <span className="text-[8px] text-gray-400 print:text-[6px]">({['A','B','C'].includes(res.id) ? '入口' : '用具'})</span>}
+                            {res.id !== '多目的室' && <span className="text-[8px] text-gray-400 print:text-[6px]">({['A','B','C'].includes(res.id) ? '用具' : '入口'})</span>}
                           </td>
                           
                           {(() => {
