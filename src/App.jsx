@@ -470,7 +470,7 @@ export default function App() {
                   </button>
                 )}
               </div>
-              <p className="text-[10px] text-blue-200 opacity-80 font-bold">三菱ケミカル / ダイヤリックス株式会社</p>
+              <p className="text-[10px] text-blue-200 opacity-80 font-bold">三菱ケミカル / リックスビジネスパートナーズ㈱</p>
             </div>
           </div>
           <nav className="flex space-x-1 bg-blue-900/50 p-1 rounded-lg overflow-x-auto w-full sm:w-auto shadow-inner">
@@ -941,7 +941,7 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
           ご予約には、事前に登録された<strong>「団体認証ID」</strong>が必要です。
         </p>
         <p className="mt-2 text-xs font-bold bg-white p-2 rounded border border-blue-100 inline-block">
-          💡 家族利用や新規利用をご希望の方は、管理部署（DRIXまたは総務）までご連絡いただき、専用の団体IDの発行をご依頼ください。
+          💡 家族利用や新規利用をご希望の方は、管理部署（リックスビジネスパートナーズ㈱または総務）までご連絡いただき、専用の団体IDの発行をご依頼ください。
         </p>
       </div>
       
@@ -2214,7 +2214,7 @@ function RulesView() {
               { t: "清掃徹底", c: "終了後は必ずモップ掛け。ゴミは各自持ち帰り。" },
               { t: "駐車場", c: "指定場所のみ。路上駐車禁止。一方通行を遵守。" },
               { t: "速度制限", c: "構内は時速20km制限。騒音に配慮してください。" },
-              { t: "破損報告", c: "破損した場合は直ちに管理人(DRIX)へ報告。" }
+              { t: "破損報告", c: "破損した場合は直ちに管理人(リックスビジネスパートナーズ㈱)へ報告。" }
             ].map((rule, i) => (
               <li key={i} className="flex items-start bg-gray-50/80 p-6 rounded-[2.5rem] border-2 border-transparent hover:border-blue-100 transition-all">
                 <span className="bg-blue-600 text-white w-9 h-9 rounded-full flex items-center justify-center text-xs mr-5 mt-1 flex-shrink-0 font-black shadow-lg">{i+1}</span>
