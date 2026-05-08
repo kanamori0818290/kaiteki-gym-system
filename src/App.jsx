@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban, Mail, Key, UserCheck, MousePointerClick, RotateCcw, Filter, Unlock, BarChart3, Megaphone, MessageSquare, AlertOctagon, Settings } from 'lucide-react';
+import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban, Mail, Key, UserCheck, MousePointerClick, RotateCcw, Filter, Unlock, BarChart3, Megaphone, MessageSquare, AlertOctagon, Settings, Edit2 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, query, writeBatch, setDoc } from 'firebase/firestore';
@@ -1746,6 +1746,18 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
     }
   };
 
+  const updateGroupAuthId = async (id, currentAuthId, groupName) => {
+    const newAuthId = window.prompt(`【${groupName}】の新しい団体認証IDを入力してください（半角英数字）：`, currentAuthId);
+    if (newAuthId !== null && newAuthId.trim() !== "" && newAuthId.trim() !== currentAuthId) {
+      try {
+        await updateDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'groups', id), { 
+          authId: newAuthId.trim().toUpperCase() 
+        });
+        onStatusUpdate();
+      } catch (err) { alert("IDの更新に失敗しました"); }
+    }
+  };
+
   const launchEmailToReservedUsers = (targetDates) => {
     const reservedUsersInPeriod = reservations.filter(r => targetDates.includes(r.date) && r.email && r.status !== 'cancelled');
     if (reservedUsersInPeriod.length === 0) return;
@@ -1980,7 +1992,13 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
                             <option value="employee">従業員</option>
                             <option value="external">一般</option>
                           </select>
-                          <span className="text-[9px] font-mono font-bold text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded">ID: {g.authId}</span>
+                          <span 
+                            onClick={() => updateGroupAuthId(g.id, g.authId, g.name)}
+                            className="text-[9px] font-mono font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded cursor-pointer hover:bg-blue-100 hover:text-blue-700 transition-colors flex items-center gap-1"
+                            title="IDを変更する"
+                          >
+                            ID: {g.authId} <Edit2 className="w-2 h-2" />
+                          </span>
                         </div>
                       </div>
                       <div className="flex gap-1">
@@ -2328,15 +2346,12 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                                 
                                 cells.push(
                                   <td key={start} colSpan={span} className={`p-0 relative border-gray-300 ${!isLastSpanSlot ? 'border-r' : ''}`}>
-                                    {/* 背景色と透過する縦線 */}
                                     <div className={`absolute inset-0 flex ${bgColor}`}>
                                       {Array.from({ length: span }).map((_, i) => (
                                         <div key={i} className={`flex-1 ${i < span - 1 ? 'border-r border-gray-300/50' : ''}`}></div>
                                       ))}
                                     </div>
-                                    {/* 予約ブロックの太枠 */}
                                     <div className="absolute inset-0 border-[2px] border-black pointer-events-none z-10"></div>
-                                    {/* 文字を読みやすくするための背景 */}
                                     <div className="absolute inset-0 flex items-center justify-center p-0.5 overflow-hidden z-20">
                                       <span className="font-bold text-black leading-tight text-center break-words text-[9px] sm:text-[10px] bg-white/60 px-1 rounded shadow-sm">
                                         {matchingRes.name}
@@ -2382,9 +2397,11 @@ function MonthlyPrintView({ reservations, closedDays, monthStr, onBack }) {
   const month = parseInt(mStr);
   
   const daysInMonth = getDaysInMonth(year, month);
-  const firstDay = getFirstDayOfMonth(year, month);
-  const blanks = Array.from({ length: firstDay }, (_, i) => i);
-  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  const displayDays = Array.from({ length: daysInMonth }, (_, i) => {
+    return formatDateStr(new Date(year, month - 1, i + 1));
+  });
+  
+  const closedDateStrs = closedDays.map(cd => cd.date);
   const dayLabels = ['日','月','火','水','木','金','土'];
 
   useEffect(() => {
@@ -2394,6 +2411,7 @@ function MonthlyPrintView({ reservations, closedDays, monthStr, onBack }) {
       @media print { 
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } 
         body { background-color: white !important; }
+        tr { page-break-inside: avoid; }
       }
     `;
     document.head.appendChild(style);
@@ -2406,7 +2424,7 @@ function MonthlyPrintView({ reservations, closedDays, monthStr, onBack }) {
         <div className="flex items-center space-x-3">
           <Printer className="h-8 w-8 text-indigo-600" />
           <div>
-            <h3 className="text-xl font-bold">管理者 確認用 予定表 (月間)</h3>
+            <h3 className="text-xl font-bold">管理者 確認用 予定表 (月間タイムライン)</h3>
             <p className="text-xs text-gray-500 font-bold">自動的に横向き設定になっています。</p>
           </div>
         </div>
@@ -2418,45 +2436,125 @@ function MonthlyPrintView({ reservations, closedDays, monthStr, onBack }) {
 
       <div className="bg-white p-4 min-h-[800px] font-sans print:p-0 print:min-h-0">
         <div className="text-center mb-6">
-          <h2 className="text-2xl font-bold border-b-[3px] border-black inline-block px-12 pb-2 tracking-widest">KAITEKI体育館 月間予定表</h2>
-          <p className="text-xl font-black mt-2">{year}年 {month}月</p>
+          <h2 className="text-2xl font-bold border-b-[3px] border-black inline-block px-12 pb-2 tracking-widest">KAITEKI体育館 月間予定表 ({year}年{month}月)</h2>
         </div>
         
-        <div className="border-t-[3px] border-l-[3px] border-black bg-white">
-          <div className="grid grid-cols-7 border-b-[3px] border-black">
-            {dayLabels.map((dl, i) => (
-              <div key={dl} className={`p-2 text-center font-black border-r-[3px] border-black text-sm bg-gray-100 ${i===0 ? 'text-red-600' : i===6 ? 'text-blue-600' : ''}`}>
-                {dl}
-              </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7">
-            {blanks.map(b => <div key={`b-${b}`} className="min-h-[120px] border-r-[3px] border-b-[3px] border-black bg-gray-50/50"></div>)}
-            {days.map(d => {
-              const currentDStr = formatDateStr(new Date(year, month - 1, d));
-              const dayRes = reservations.filter(r => r.date === currentDStr && r.status !== 'cancelled').sort((a,b) => a.startTime.localeCompare(b.startTime));
-              const isClosed = closedDays.some(cd => cd.date === currentDStr);
-              const dateObj = new Date(year, month - 1, d);
-              const dayColor = dateObj.getDay() === 0 ? 'text-red-600' : dateObj.getDay() === 6 ? 'text-blue-600' : 'text-black';
+        <div className="border-[3px] border-black bg-white">
+          <table className="w-full table-fixed border-collapse text-[10px]">
+            <thead>
+              <tr className="bg-gray-100 border-b-[3px] border-black">
+                <th className="border-r-[3px] border-black p-1 w-[8%] font-bold text-gray-800">日付</th>
+                <th className="border-r-[3px] border-black p-1 w-[10%] font-bold text-gray-800">施設 / コート</th>
+                {TIME_SLOTS.map((t, i) => (
+                  <th key={t} className={`p-0.5 font-mono text-[8px] sm:text-[9px] font-bold text-gray-800 border-gray-300 ${i < TIME_SLOTS.length - 1 ? 'border-r' : ''}`}>
+                    {t.replace(/^0/, '')}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {displayDays.map((d, dayIndex) => {
+                const dateObj = new Date(d);
+                const isClosed = closedDateStrs.includes(d);
+                const dayLabel = `${d.split('-')[1]}/${d.split('-')[2]} (${dayLabels[dateObj.getDay()]})`;
+                const dayColor = dateObj.getDay() === 0 ? 'text-red-600' : dateObj.getDay() === 6 ? 'text-blue-600' : 'text-gray-900';
 
-              return (
-                <div key={d} className={`min-h-[130px] border-r-[3px] border-b-[3px] border-black p-1 flex flex-col ${isClosed ? 'bg-red-50/50' : 'bg-white'}`}>
-                  <div className={`font-black text-sm mb-1 ${dayColor}`}>{d}</div>
-                  {isClosed && <div className="text-[10px] font-black text-red-600 text-center border-y border-red-300 py-1 mb-1">休館</div>}
-                  <div className="flex-1 overflow-hidden space-y-0.5">
-                    {dayRes.map(res => (
-                       <div key={res.id} className="text-[8px] sm:text-[9px] leading-tight border-l-2 border-blue-500 pl-1 mb-1 bg-blue-50/30 truncate">
-                         <span className="font-bold">{res.startTime.replace(':00','')}</span> <span className="font-bold text-gray-800">{res.name}</span>
-                         <span className="text-gray-500 block transform scale-90 origin-left">
-                           {res.place.includes('体育館') ? `体(${Array.isArray(res.courts) ? res.courts.join('') : res.courts})` : '多'}
-                         </span>
-                       </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
+                return (
+                  <React.Fragment key={d}>
+                    {RESOURCES.map((res, rIndex) => {
+                      const isLastResource = rIndex === RESOURCES.length - 1;
+                      return (
+                        <tr key={`${d}-${res.id}`} className={`h-7 sm:h-8 ${isLastResource && dayIndex < displayDays.length - 1 ? 'border-b-[3px] border-black' : 'border-b border-gray-300'}`}>
+                          {rIndex === 0 && (
+                            <td rowSpan={RESOURCES.length} className={`border-r-[3px] border-black p-1 text-center font-bold bg-white ${dayColor} text-sm whitespace-nowrap`}>
+                              {dayLabel}
+                              {isClosed && <div className="text-[10px] text-red-500 mt-2 font-black">【休館】</div>}
+                            </td>
+                          )}
+                          <td className="border-r-[3px] border-black p-1 font-bold bg-white text-gray-800 whitespace-nowrap text-center text-[10px] print:text-[8px]">
+                            {res.id === '多目的室' ? '多目的室' : `コート${res.id} `}
+                            {res.id !== '多目的室' && <span className="text-[8px] text-gray-400 print:text-[6px]">({['A','B','C'].includes(res.id) ? '用具' : '入口'})</span>}
+                          </td>
+                          
+                          {(() => {
+                            const cells = [];
+                            let cIndex = 0;
+                            while (cIndex < TIME_SLOTS.length) {
+                              const start = TIME_SLOTS[cIndex];
+                              const end = END_TIMES[cIndex];
+                              const isLastSlot = cIndex === TIME_SLOTS.length - 1;
+
+                              if (isClosed) {
+                                cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''} bg-gray-200/50 bg-[repeating-linear-gradient(45deg,transparent,transparent_2px,rgba(0,0,0,0.1)_2px,rgba(0,0,0,0.1)_4px)]`}></td>);
+                                cIndex++;
+                                continue;
+                              }
+
+                              const matchingRes = reservations.find(r => {
+                                if (r.date !== d || r.status === 'cancelled') return false;
+                                if (!isTimeOverlapping(start, end, r.startTime, r.endTime)) return false;
+                                if (res.type === '体育館' && r.place.includes('体育館') && r.courts && r.courts.includes(res.id)) return true;
+                                if (res.type === '多目的室' && r.place.includes('多目的室')) return true;
+                                return false;
+                              });
+
+                              if (matchingRes) {
+                                let span = 1;
+                                let nextIndex = cIndex + 1;
+                                while (nextIndex < TIME_SLOTS.length) {
+                                  const nextStart = TIME_SLOTS[nextIndex];
+                                  const nextEnd = END_TIMES[nextIndex];
+                                  if (isTimeOverlapping(nextStart, nextEnd, matchingRes.startTime, matchingRes.endTime)) {
+                                    span++;
+                                    nextIndex++;
+                                  } else {
+                                    break;
+                                  }
+                                }
+
+                                const bgColor = matchingRes.userType === 'mcc' ? 'bg-purple-200' : matchingRes.userType === 'employee' ? 'bg-blue-200' : 'bg-green-200';
+                                const isLastSpanSlot = (cIndex + span - 1) === TIME_SLOTS.length - 1;
+                                
+                                cells.push(
+                                  <td key={start} colSpan={span} className={`p-0 relative border-gray-300 ${!isLastSpanSlot ? 'border-r' : ''}`}>
+                                    <div className={`absolute inset-0 flex ${bgColor}`}>
+                                      {Array.from({ length: span }).map((_, i) => (
+                                        <div key={i} className={`flex-1 ${i < span - 1 ? 'border-r border-gray-300/50' : ''}`}></div>
+                                      ))}
+                                    </div>
+                                    <div className="absolute inset-0 border-[2px] border-black pointer-events-none z-10"></div>
+                                    <div className="absolute inset-0 flex items-center justify-center p-0.5 overflow-hidden z-20">
+                                      <span className="font-bold text-black leading-tight text-center break-words text-[9px] sm:text-[10px] bg-white/60 px-1 rounded shadow-sm">
+                                        {matchingRes.name}
+                                      </span>
+                                    </div>
+                                  </td>
+                                );
+                                cIndex += span;
+                              } else {
+                                cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''}`}></td>);
+                                cIndex++;
+                              }
+                            }
+                            return cells;
+                          })()}
+                        </tr>
+                      );
+                    })}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        
+        <div className="mt-6 flex justify-between items-end text-[12px] font-bold text-gray-600">
+          <div className="flex space-x-6">
+            <span className="flex items-center"><span className="w-4 h-4 bg-purple-200 border-2 border-black inline-block mr-2"></span>会社の部活</span>
+            <span className="flex items-center"><span className="w-4 h-4 bg-blue-200 border-2 border-black inline-block mr-2"></span>従業員</span>
+            <span className="flex items-center"><span className="w-4 h-4 bg-green-200 border-2 border-black inline-block mr-2"></span>一般・団体</span>
           </div>
+          <div>出力日時: {new Date().toLocaleString()}</div>
         </div>
       </div>
     </div>
