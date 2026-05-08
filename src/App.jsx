@@ -2616,8 +2616,7 @@ function RulesView() {
             <h3 className="flex items-center text-red-800 text-2xl mb-8 border-l-[10px] border-red-700 pl-6 tracking-tight font-black">③ キャンセルポリシー</h3>
             <div className="bg-red-50 p-8 rounded-[3rem] space-y-6 shadow-inner border-2 border-white">
               <p className="text-sm font-bold text-red-900">
-                予約可能枠は「確定した時点」で消費されます。<br/>
-                より多くの方にご利用いただくため、悪質なキャンセルには自動ペナルティ（予約停止）が適用されます。
+                より多くの方にご利用いただくため、キャンセルには自動ペナルティ（予約停止）が適用されます。
               </p>
               <div className="bg-white p-4 rounded-2xl border border-red-100 text-xs font-bold text-gray-700 space-y-2">
                 <div className="text-red-600 font-black mb-1 border-b border-red-100 pb-1">■ ペナルティ対象</div>
@@ -2625,7 +2624,7 @@ function RulesView() {
                 <p className="text-[10px] text-gray-400">※予約後1時間以内の取り消しは、間違い防止のため対象外となります。</p>
               </div>
               <div className="bg-white p-4 rounded-2xl border border-red-100 text-xs font-bold text-gray-700 space-y-2">
-                <div className="text-red-600 font-black mb-1 border-b border-red-100 pb-1">■ 罰則（ペナルティ）内容</div>
+                <div className="text-red-600 font-black mb-1 border-b border-red-100 pb-1">■ ペナルティ内容</div>
                 <div className="grid grid-cols-3 gap-2 text-center mt-2">
                   <div className="bg-gray-100 p-2 rounded">
                     <p className="text-[9px] text-gray-500 mb-1">初回</p>
