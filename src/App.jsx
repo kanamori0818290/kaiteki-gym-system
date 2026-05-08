@@ -2620,8 +2620,11 @@ function RulesView() {
               </p>
               <div className="bg-white p-4 rounded-2xl border border-red-100 text-xs font-bold text-gray-700 space-y-2">
                 <div className="text-red-600 font-black mb-1 border-b border-red-100 pb-1">■ ペナルティ対象</div>
-                <p>・前日、当日、または無断でのキャンセル</p>
-                <p className="text-[10px] text-gray-400">※予約後1時間以内の取り消しは、間違い防止のため対象外となります。</p>
+                <p>・前日、当日、無断でのキャンセル</p>
+                <p className="text-[10px] text-gray-500 leading-relaxed">
+                  ※2日前までのキャンセルはペナルティ対象外です。<br/>
+                  ※前日以降のキャンセルであっても、予約後1時間以内の取り消しであれば、間違い防止のためペナルティは課されません。
+                </p>
               </div>
               <div className="bg-white p-4 rounded-2xl border border-red-100 text-xs font-bold text-gray-700 space-y-2">
                 <div className="text-red-600 font-black mb-1 border-b border-red-100 pb-1">■ ペナルティ内容</div>
