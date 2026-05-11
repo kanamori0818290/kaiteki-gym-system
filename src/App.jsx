@@ -745,10 +745,11 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
   }, [authIdInput, groups]);
 
   const maxRecurringCount = useMemo(() => {
-    if (userType === 'mcc') return 60; // 約1年分
-    if (userType === 'employee') return 15; // 約3ヶ月分
-    if (userType === 'external') return 10; // 約2ヶ月分
-    return 10; // デフォルト
+    if (userType === 'mcc') return 60; 
+    if (userType === 'soumu') return 60;
+    if (userType === 'employee') return 15; 
+    if (userType === 'external') return 10; 
+    return 10; 
   }, [userType]);
 
   const closedDateStrs = useMemo(() => closedDays.map(cd => cd.date), [closedDays]);
@@ -831,7 +832,7 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
     if (selectedFacilities.includes('体育館') && selectedCourts.length === 0) return alert("コート(A-F)を選んでください。");
     
     if (targetDates.length > maxRecurringCount) {
-      const typeLabel = userType === 'mcc' ? '会社の部活 (約1年分)' : userType === 'employee' ? '従業員 (約3ヶ月分)' : '一般・団体 (約2ヶ月分)';
+      const typeLabel = userType === 'mcc' ? '会社の部活 (約1年分)' : userType === 'soumu' ? '総務 (約1年分)' : userType === 'employee' ? '従業員 (約3ヶ月分)' : '一般・団体 (約2ヶ月分)';
       return alert(`${typeLabel}の定期予約は最大${maxRecurringCount}回分までまとめて申請可能です。`);
     }
 
@@ -870,6 +871,7 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
       if (userType === 'external' && targetDateObj > externalMaxDate) {
         return alert(`一般・団体（近隣校区等）の予約は、本日より2ヶ月先（${formatDateStr(externalMaxDate)}）まで可能です。`);
       }
+      // soumu は期間制限なし
     }
 
     for (const d of partitionedDates.valid) {
@@ -926,7 +928,8 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
         return alert(`【${monthStr}】の予約上限（月間${limitLabel}時間）を超過します。\n・現在の消費枠: ${currentTotalMinutes / 60}時間 (※キャンセル分含む)\n・今回追加: ${additionalMinutes / 60}時間`);
       }
 
-      if (isSixCourts && (currentSixCourtCount + newCount > 1)) {
+      // ★ 総務区分の場合は6面制限のチェックを行わない
+      if (userType !== 'soumu' && isSixCourts && (currentSixCourtCount + newCount > 1)) {
         return alert(`【${monthStr}】において、6面（全面）予約は月1回までしかできません。（現在の6面予約枠消費: ${currentSixCourtCount}回）`);
       }
     }
@@ -1019,8 +1022,8 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
                 <p className="text-[10px] font-bold text-green-600 uppercase tracking-widest mb-1 flex items-center"><Check className="w-3 h-3 mr-1" /> 認証成功</p>
                 <p className="text-lg font-black text-green-900">{formData.name}</p>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  <span className={`text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider ${userType === 'mcc' ? 'bg-purple-100 text-purple-700' : userType === 'employee' ? 'bg-blue-100 text-blue-700' : 'bg-green-200 text-green-800'}`}>
-                    {userType === 'mcc' ? '会社の部活' : userType === 'employee' ? '従業員' : '一般・団体'}
+                  <span className={`text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider ${userType === 'mcc' ? 'bg-purple-100 text-purple-700' : userType === 'employee' ? 'bg-blue-100 text-blue-700' : userType === 'soumu' ? 'bg-gray-200 text-gray-800' : 'bg-green-200 text-green-800'}`}>
+                    {userType === 'mcc' ? '会社の部活' : userType === 'employee' ? '従業員' : userType === 'soumu' ? '総務' : '一般・団体'}
                   </span>
                   {limitType === 'unlimited' && (
                     <span className="text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider bg-yellow-100 text-yellow-700 border border-yellow-200">
@@ -1538,8 +1541,8 @@ function ReportView({ groups, user, onSuccess }) {
 function AdminDashboard({ reservations, closedDays, groups, reports, currentAnnouncement, penaltySettings, onStatusUpdate }) {
   const [printWeekStart, setPrintWeekStart] = useState(formatDateStr(new Date()));
   const [showPrintView, setShowPrintView] = useState(false);
-  const [showMonthlyPrintView, setShowMonthlyPrintView] = useState(false); // 月間印刷用
-  const [printMonthStr, setPrintMonthStr] = useState(formatDateStr(new Date()).substring(0, 7)); // YYYY-MM
+  const [showMonthlyPrintView, setShowMonthlyPrintView] = useState(false); 
+  const [printMonthStr, setPrintMonthStr] = useState(formatDateStr(new Date()).substring(0, 7)); 
   
   const [closedStart, setClosedStart] = useState('');
   const [closedEnd, setClosedEnd] = useState('');
@@ -1591,7 +1594,6 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
     } catch (err) { alert("設定の更新に失敗しました"); }
   };
 
-  // 団体のペナルティ解除処理
   const handleResetPenalty = async (id, name) => {
     if (window.confirm(`【${name}】のペナルティ履歴と予約停止期間をリセット（免除）しますか？`)) {
       try {
@@ -1608,11 +1610,13 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
     const mccIds = groups.filter(g => g.type === 'mcc').map(g => parseInt(g.authId.replace('M', ''))).filter(n => !isNaN(n));
     const empIds = groups.filter(g => g.type === 'employee').map(g => parseInt(g.authId.replace('E', ''))).filter(n => !isNaN(n));
     const extIds = groups.filter(g => g.type === 'external').map(g => parseInt(g.authId.replace('G', ''))).filter(n => !isNaN(n));
+    const soumuIds = groups.filter(g => g.type === 'soumu').map(g => parseInt(g.authId.replace('S', ''))).filter(n => !isNaN(n));
     
     return {
       mcc: `M${Math.max(1000, ...mccIds) + 1}`,
       employee: `E${Math.max(1000, ...empIds) + 1}`,
-      external: `G${Math.max(1000, ...extIds) + 1}`
+      external: `G${Math.max(1000, ...extIds) + 1}`,
+      soumu: `S${Math.max(1000, ...soumuIds) + 1}`
     };
   }, [groups]);
 
@@ -1723,7 +1727,7 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
 
   const updateGroupType = async (id, currentType, newType) => {
     if (currentType === newType) return;
-    const typeLabels = { 'mcc': '会社の部活', 'employee': '従業員', 'external': '一般・団体' };
+    const typeLabels = { 'mcc': '会社の部活', 'employee': '従業員', 'external': '一般・団体', 'soumu': '総務' };
     if (window.confirm(`この団体の区分を「${typeLabels[newType]}」に変更しますか？`)) {
       try {
         await updateDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'groups', id), { type: newType });
@@ -1922,9 +1926,10 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
             <h3 className="font-bold text-lg flex items-center text-indigo-900"><Users className="h-5 w-5 mr-2" /> 利用団体の管理とペナルティ状況</h3>
             <div className="flex items-center bg-gray-100 px-3 py-2 rounded-xl text-[10px] font-bold text-gray-500 gap-4">
               <span>採番ルール：</span>
-              <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-purple-400" /> MCC系 = M</span>
+              <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-purple-400" /> MCC = M</span>
               <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-blue-400" /> 従業員 = E</span>
               <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-green-400" /> 一般団 = G</span>
+              <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-gray-400" /> 総務 = S</span>
             </div>
           </div>
           
@@ -1940,6 +1945,7 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
                   <option value="external">一般・団体</option>
                   <option value="employee">従業員</option>
                   <option value="mcc">会社の部活 (MCC)</option>
+                  <option value="soumu">総務</option>
                 </select>
               </div>
               <div className="sm:col-span-3">
@@ -1981,16 +1987,17 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
                   <div key={g.id} className={`flex flex-col bg-white p-3 rounded-xl border-2 transition-all ${isSuspended ? 'border-red-300 bg-red-50' : 'border-gray-100 hover:border-indigo-200 shadow-sm'}`}>
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex flex-col">
-                        <span className="text-sm font-black text-gray-800 truncate max-w-[150px]">{g.name}</span>
+                        <span className="text-sm font-black text-gray-800 truncate max-w-[150px]" title={g.name}>{g.name}</span>
                         <div className="flex items-center gap-1 mt-1 flex-wrap">
                           <select 
                             value={g.type} 
                             onChange={(e) => updateGroupType(g.id, g.type, e.target.value)}
-                            className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase outline-none cursor-pointer border-b-2 hover:brightness-95 transition-all ${g.type === 'mcc' ? 'bg-purple-100 text-purple-700 border-purple-200' : g.type === 'employee' ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-green-100 text-green-700 border-green-200'}`}
+                            className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase outline-none cursor-pointer border-b-2 hover:brightness-95 transition-all ${g.type === 'mcc' ? 'bg-purple-100 text-purple-700 border-purple-200' : g.type === 'employee' ? 'bg-blue-100 text-blue-700 border-blue-200' : g.type === 'soumu' ? 'bg-gray-200 text-gray-800 border-gray-300' : 'bg-green-100 text-green-700 border-green-200'}`}
                           >
                             <option value="mcc">部活</option>
                             <option value="employee">従業員</option>
                             <option value="external">一般</option>
+                            <option value="soumu">総務</option>
                           </select>
                           <span 
                             onClick={() => updateGroupAuthId(g.id, g.authId, g.name)}
@@ -2026,7 +2033,7 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
           </div>
         </div>
 
-        {/* 1.5 ペナルティ日数設定（追加） */}
+        {/* 1.5 ペナルティ日数設定 */}
         <div className="bg-white p-6 rounded-[2rem] border-2 border-red-50 shadow-xl space-y-4">
           <h3 className="font-bold text-lg flex items-center text-red-900"><AlertOctagon className="h-5 w-5 mr-2" /> ペナルティ（予約停止）日数の設定</h3>
           <p className="text-[10px] font-bold text-gray-500">前日・当日・無断キャンセルを繰り返した団体に対する自動予約停止日数を設定します。</p>
@@ -2112,7 +2119,7 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
               </div>
             </div>
 
-            {/* 月間印刷 (新規) */}
+            {/* 月間印刷 */}
             <div className="bg-indigo-50 p-5 rounded-2xl border border-indigo-100 space-y-4">
               <div className="font-bold text-indigo-800 border-b border-indigo-200 pb-2">管理者 確認用 (月間)</div>
               <div className="flex flex-col gap-3">
@@ -2341,7 +2348,7 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                                   }
                                 }
 
-                                const bgColor = matchingRes.userType === 'mcc' ? 'bg-purple-200' : matchingRes.userType === 'employee' ? 'bg-blue-200' : 'bg-green-200';
+                                const bgColor = matchingRes.userType === 'mcc' ? 'bg-purple-200' : matchingRes.userType === 'employee' ? 'bg-blue-200' : matchingRes.userType === 'soumu' ? 'bg-gray-300' : 'bg-green-200';
                                 const isLastSpanSlot = (cIndex + span - 1) === TIME_SLOTS.length - 1;
                                 
                                 cells.push(
@@ -2382,6 +2389,7 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
             <span className="flex items-center"><span className="w-4 h-4 bg-purple-200 border-2 border-black inline-block mr-2"></span>会社の部活</span>
             <span className="flex items-center"><span className="w-4 h-4 bg-blue-200 border-2 border-black inline-block mr-2"></span>従業員</span>
             <span className="flex items-center"><span className="w-4 h-4 bg-green-200 border-2 border-black inline-block mr-2"></span>一般・団体</span>
+            <span className="flex items-center"><span className="w-4 h-4 bg-gray-300 border-2 border-black inline-block mr-2"></span>総務</span>
           </div>
           <div>出力日時: {new Date().toLocaleString()}</div>
         </div>
@@ -2390,7 +2398,7 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
   );
 }
 
-// --- 月間予定表プレビュー（新規追加） ---
+// --- 月間予定表プレビュー（タイムライン形式に修正） ---
 function MonthlyPrintView({ reservations, closedDays, monthStr, onBack }) {
   const [yearStr, mStr] = monthStr.split('-');
   const year = parseInt(yearStr);
@@ -2512,7 +2520,7 @@ function MonthlyPrintView({ reservations, closedDays, monthStr, onBack }) {
                                   }
                                 }
 
-                                const bgColor = matchingRes.userType === 'mcc' ? 'bg-purple-200' : matchingRes.userType === 'employee' ? 'bg-blue-200' : 'bg-green-200';
+                                const bgColor = matchingRes.userType === 'mcc' ? 'bg-purple-200' : matchingRes.userType === 'employee' ? 'bg-blue-200' : matchingRes.userType === 'soumu' ? 'bg-gray-300' : 'bg-green-200';
                                 const isLastSpanSlot = (cIndex + span - 1) === TIME_SLOTS.length - 1;
                                 
                                 cells.push(
@@ -2553,6 +2561,7 @@ function MonthlyPrintView({ reservations, closedDays, monthStr, onBack }) {
             <span className="flex items-center"><span className="w-4 h-4 bg-purple-200 border-2 border-black inline-block mr-2"></span>会社の部活</span>
             <span className="flex items-center"><span className="w-4 h-4 bg-blue-200 border-2 border-black inline-block mr-2"></span>従業員</span>
             <span className="flex items-center"><span className="w-4 h-4 bg-green-200 border-2 border-black inline-block mr-2"></span>一般・団体</span>
+            <span className="flex items-center"><span className="w-4 h-4 bg-gray-300 border-2 border-black inline-block mr-2"></span>総務</span>
           </div>
           <div>出力日時: {new Date().toLocaleString()}</div>
         </div>
