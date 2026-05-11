@@ -550,7 +550,7 @@ export default function App() {
                 onSuccess={(msg) => {showToast(msg || '予約が完了しました。'); setActiveTab('calendar');}} 
               />
             )}
-            {activeTab === 'cancel' && <CancelView reservations={reservations} groups={groups} penaltySettings={penaltySettings} onSuccess={() => { showToast('予約を取り消しました'); setActiveTab('calendar'); }} />}
+            {activeTab === 'cancel' && <CancelView reservations={reservations} groups={groups} penaltySettings={penaltySettings} isAdmin={isAdmin} onSuccess={() => { showToast('予約を取り消しました'); setActiveTab('calendar'); }} />}
             {activeTab === 'report' && <ReportView groups={groups} user={user} onSuccess={(msg) => { showToast(msg); setActiveTab('calendar'); }} />}
             {activeTab === 'rules' && <RulesView />}
             {activeTab === 'admin' && isAdmin && (
@@ -745,10 +745,10 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
   }, [authIdInput, groups]);
 
   const maxRecurringCount = useMemo(() => {
-    if (userType === 'mcc') return 60; 
-    if (userType === 'soumu') return 60;
-    if (userType === 'employee') return 15; 
-    if (userType === 'external') return 10; 
+    if (userType === 'mcc') return 53; // 1年分 (約52週)
+    if (userType === 'soumu') return 53; // 1年分
+    if (userType === 'employee') return 15; // 約3ヶ月分
+    if (userType === 'external') return 10; // 約2ヶ月分
     return 10; 
   }, [userType]);
 
@@ -832,7 +832,7 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
     if (selectedFacilities.includes('体育館') && selectedCourts.length === 0) return alert("コート(A-F)を選んでください。");
     
     if (targetDates.length > maxRecurringCount) {
-      const typeLabel = userType === 'mcc' ? '会社の部活 (約1年分)' : userType === 'soumu' ? '総務 (約1年分)' : userType === 'employee' ? '従業員 (約3ヶ月分)' : '一般・団体 (約2ヶ月分)';
+      const typeLabel = userType === 'mcc' ? '会社の部活 (1年分)' : userType === 'soumu' ? '総務 (1年分)' : userType === 'employee' ? '従業員 (約3ヶ月分)' : '一般・団体 (約2ヶ月分)';
       return alert(`${typeLabel}の定期予約は最大${maxRecurringCount}回分までまとめて申請可能です。`);
     }
 
@@ -1271,7 +1271,7 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
   );
 }
 
-function CancelView({ reservations, groups, penaltySettings, onSuccess }) {
+function CancelView({ reservations, groups, penaltySettings, isAdmin, onSuccess }) {
   const [authIdInput, setAuthIdInput] = useState('');
   const [targetGroup, setTargetGroup] = useState(null);
   const [inputDeletePass, setInputDeletePass] = useState('');
@@ -1306,7 +1306,9 @@ function CancelView({ reservations, groups, penaltySettings, onSuccess }) {
     const willPenalty = isPenaltyTarget(targetRes);
     
     if (willPenalty && !isExemptChecked) {
-      const confirmMsg = "【警告：ペナルティ対象のキャンセルです】\n\nこのキャンセルは前日・当日キャンセルのため、ペナルティ（予約停止）の対象となります。\n※災害・大雪などのやむを得ない理由の場合は、キャンセル画面の「免除を申告する」にチェックを入れてください。\n\n本当にキャンセルを実行しますか？";
+      const confirmMsg = "【警告：ペナルティ対象のキャンセルです】\n\nこのキャンセルは前日・当日キャンセルのため、ペナルティ（予約停止）の対象となります。\n" +
+        (isAdmin ? "※災害・大雪などのやむを得ない理由の場合は、キャンセル画面の「免除を申告する」にチェックを入れてください。\n\n" : "\n") +
+        "本当にキャンセルを実行しますか？";
       if (!window.confirm(confirmMsg)) return;
     } else {
       if (!window.confirm('この予約を取り消しますか？')) return;
@@ -1394,15 +1396,17 @@ function CancelView({ reservations, groups, penaltySettings, onSuccess }) {
                   <input type="password" placeholder="取消用パスワードを入力" value={inputDeletePass} onChange={(e) => setInputDeletePass(e.target.value)} className="bg-white border-2 border-red-200 rounded-xl px-4 py-3 flex-1 text-sm font-bold outline-none focus:border-red-500 shadow-inner" />
                 </div>
                 
-                <div className="pt-3 border-t border-red-100">
-                  <label className="flex items-start gap-3 cursor-pointer p-2 hover:bg-red-100 rounded-lg transition-colors">
-                    <input type="checkbox" checked={isExemptChecked} onChange={(e) => setIsExemptChecked(e.target.checked)} className="mt-1 w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500" />
-                    <div>
-                      <span className="text-sm font-black text-red-800 block">災害・大雪などによる特例免除として申告する</span>
-                      <span className="text-[10px] font-bold text-red-600 block mt-1 leading-relaxed">※前日・当日のキャンセルでもペナルティが免除されます。不正防止のため管理者へ記録が残ります。</span>
-                    </div>
-                  </label>
-                </div>
+                {isAdmin && (
+                  <div className="pt-3 border-t border-red-100">
+                    <label className="flex items-start gap-3 cursor-pointer p-2 hover:bg-red-100 rounded-lg transition-colors">
+                      <input type="checkbox" checked={isExemptChecked} onChange={(e) => setIsExemptChecked(e.target.checked)} className="mt-1 w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500" />
+                      <div>
+                        <span className="text-sm font-black text-red-800 block">災害・大雪などによる特例免除として申告する（管理者専用）</span>
+                        <span className="text-[10px] font-bold text-red-600 block mt-1 leading-relaxed">※前日・当日のキャンセルでもペナルティが免除されます。</span>
+                      </div>
+                    </label>
+                  </div>
+                )}
               </div>
             )}
             
