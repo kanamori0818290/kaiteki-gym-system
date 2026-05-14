@@ -121,8 +121,9 @@ const isPenaltyTarget = (res) => {
   
   const diffDays = Math.floor((resDateZero - todayZero) / 86400000);
   
-  // diffDays: 0(当日), 1(前日), 負の値(無断等、すでに時間が過ぎている)
-  return diffDays <= 1;
+  // diffDays: 0(当日), 負の値(無断等、すでに時間が過ぎている)
+  // 当日・無断キャンセルのみペナルティ対象
+  return diffDays <= 0;
 };
 
 // --- サブコンポーネント ---
@@ -331,7 +332,7 @@ export default function App() {
   const [groups, setGroups] = useState([]); 
   const [reports, setReports] = useState([]); // お問合せ・報告データ
   const [announcementText, setAnnouncementText] = useState(''); // お知らせテキスト
-  const [penaltySettings, setPenaltySettings] = useState({ secondPenaltyDays: 10, thirdPenaltyDays: 30 });
+  const [penaltySettings, setPenaltySettings] = useState({ secondPenaltyDays: 30 });
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -402,8 +403,7 @@ export default function App() {
     const unsubPenSettings = onSnapshot(penSettingsRef, (docSnap) => {
       if (docSnap.exists()) {
         setPenaltySettings({
-          secondPenaltyDays: docSnap.data().secondPenaltyDays || 10,
-          thirdPenaltyDays: docSnap.data().thirdPenaltyDays || 30
+          secondPenaltyDays: docSnap.data().secondPenaltyDays || 30
         });
       }
     });
@@ -1306,7 +1306,7 @@ function CancelView({ reservations, groups, penaltySettings, isAdmin, onSuccess 
     const willPenalty = isPenaltyTarget(targetRes);
     
     if (willPenalty && !isExemptChecked) {
-      const confirmMsg = "【警告：ペナルティ対象のキャンセルです】\n\nこのキャンセルは前日・当日キャンセルのため、ペナルティ（予約停止）の対象となります。\n" +
+      const confirmMsg = "【警告：ペナルティ対象のキャンセルです】\n\nこのキャンセルは当日・無断キャンセルのため、ペナルティ（予約停止）の対象となります。\n" +
         (isAdmin ? "※災害・大雪などのやむを得ない理由の場合は、キャンセル画面の「免除を申告する」にチェックを入れてください。\n\n" : "\n") +
         "本当にキャンセルを実行しますか？";
       if (!window.confirm(confirmMsg)) return;
@@ -1332,8 +1332,7 @@ function CancelView({ reservations, groups, penaltySettings, isAdmin, onSuccess 
         
         let pDays = 0;
         if (newCount === 1) pDays = 0; // 初回は記録のみ
-        else if (newCount === 2) pDays = penaltySettings.secondPenaltyDays || 10;
-        else pDays = penaltySettings.thirdPenaltyDays || 30;
+        else pDays = penaltySettings.secondPenaltyDays || 30;
 
         let pUntil = targetGroup.penaltyUntil;
         if (pDays > 0) {
@@ -1402,7 +1401,7 @@ function CancelView({ reservations, groups, penaltySettings, isAdmin, onSuccess 
                       <input type="checkbox" checked={isExemptChecked} onChange={(e) => setIsExemptChecked(e.target.checked)} className="mt-1 w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500" />
                       <div>
                         <span className="text-sm font-black text-red-800 block">災害・大雪などによる特例免除として申告する（管理者専用）</span>
-                        <span className="text-[10px] font-bold text-red-600 block mt-1 leading-relaxed">※前日・当日のキャンセルでもペナルティが免除されます。</span>
+                        <span className="text-[10px] font-bold text-red-600 block mt-1 leading-relaxed">※当日・無断キャンセルでもペナルティが免除されます。</span>
                       </div>
                     </label>
                   </div>
@@ -1560,7 +1559,7 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
   const [editAnnouncementText, setEditAnnouncementText] = useState('');
   
   // ペナルティ設定用ステート
-  const [editPenaltySettings, setEditPenaltySettings] = useState({ secondPenaltyDays: 10, thirdPenaltyDays: 30 });
+  const [editPenaltySettings, setEditPenaltySettings] = useState({ secondPenaltyDays: 30 });
 
   const [groupSearchTerm, setGroupSearchTerm] = useState('');
   const [resFilterPeriod, setResFilterPeriod] = useState('upcoming');
@@ -1590,7 +1589,6 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
     try {
       await setDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'settings', 'penalty'), {
         secondPenaltyDays: Number(editPenaltySettings.secondPenaltyDays),
-        thirdPenaltyDays: Number(editPenaltySettings.thirdPenaltyDays),
         updatedAt: new Date().toISOString()
       });
       onStatusUpdate();
@@ -2040,19 +2038,12 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
         {/* 1.5 ペナルティ日数設定 */}
         <div className="bg-white p-6 rounded-[2rem] border-2 border-red-50 shadow-xl space-y-4">
           <h3 className="font-bold text-lg flex items-center text-red-900"><AlertOctagon className="h-5 w-5 mr-2" /> ペナルティ（予約停止）日数の設定</h3>
-          <p className="text-[10px] font-bold text-gray-500">前日・当日・無断キャンセルを繰り返した団体に対する自動予約停止日数を設定します。</p>
+          <p className="text-[10px] font-bold text-gray-500">当日・無断キャンセルを繰り返した団体に対する自動予約停止日数を設定します。</p>
           <div className="space-y-4 pt-2">
             <div className="flex items-center justify-between bg-red-50 p-3 rounded-xl border border-red-100">
-              <span className="text-sm font-bold text-red-800">2回目のペナルティ</span>
+              <span className="text-sm font-bold text-red-800">2回目以降のペナルティ</span>
               <div className="flex items-center gap-2">
                 <input type="number" value={editPenaltySettings.secondPenaltyDays} onChange={(e)=>setEditPenaltySettings({...editPenaltySettings, secondPenaltyDays: e.target.value})} className="w-20 text-center font-bold text-lg p-2 rounded-lg border-2 border-red-200 outline-none" min="0" />
-                <span className="text-sm font-bold text-red-800">日</span>
-              </div>
-            </div>
-            <div className="flex items-center justify-between bg-red-50 p-3 rounded-xl border border-red-100">
-              <span className="text-sm font-bold text-red-800">3回目以降のペナルティ</span>
-              <div className="flex items-center gap-2">
-                <input type="number" value={editPenaltySettings.thirdPenaltyDays} onChange={(e)=>setEditPenaltySettings({...editPenaltySettings, thirdPenaltyDays: e.target.value})} className="w-20 text-center font-bold text-lg p-2 rounded-lg border-2 border-red-200 outline-none" min="0" />
                 <span className="text-sm font-bold text-red-800">日</span>
               </div>
             </div>
@@ -2633,38 +2624,73 @@ function RulesView() {
               </p>
               <div className="bg-white p-4 rounded-2xl border border-red-100 text-xs font-bold text-gray-700 space-y-2">
                 <div className="text-red-600 font-black mb-1 border-b border-red-100 pb-1">■ ペナルティ対象</div>
-                <p>・前日、当日、無断でのキャンセル</p>
-                <p className="text-[10px] text-gray-500 leading-relaxed">
-                  ※2日前までのキャンセルはペナルティ対象外です。<br/>
-                  ※前日以降のキャンセルであっても、予約後1時間以内の取り消しであれば、間違い防止のためペナルティは課されません。
+                <p>・当日キャンセル・無断キャンセル</p>
+                <p className="text-[10px] text-gray-500 leading-relaxed mt-1">
+                  ※前日までのキャンセルはペナルティ対象外です。<br/>
+                  ※当日・無断キャンセルであっても、予約後1時間以内の取り消しであれば、間違い防止のためペナルティは課されません。
                 </p>
               </div>
               <div className="bg-white p-4 rounded-2xl border border-red-100 text-xs font-bold text-gray-700 space-y-2">
                 <div className="text-red-600 font-black mb-1 border-b border-red-100 pb-1">■ ペナルティ内容</div>
-                <div className="grid grid-cols-3 gap-2 text-center mt-2">
-                  <div className="bg-gray-100 p-2 rounded">
-                    <p className="text-[9px] text-gray-500 mb-1">初回</p>
-                    <p className="text-sm font-black text-gray-800">注意</p>
+                <div className="grid grid-cols-2 gap-2 text-center mt-2">
+                  <div className="bg-gray-100 p-3 rounded-xl border border-gray-200">
+                    <p className="text-[10px] text-gray-500 mb-1">初回</p>
+                    <p className="text-base font-black text-gray-800">注意</p>
                   </div>
-                  <div className="bg-orange-100 p-2 rounded">
-                    <p className="text-[9px] text-orange-600 mb-1">2回目</p>
-                    <p className="text-sm font-black text-orange-800">10日停止</p>
-                  </div>
-                  <div className="bg-red-100 p-2 rounded">
-                    <p className="text-[9px] text-red-600 mb-1">3回目以降</p>
-                    <p className="text-sm font-black text-red-800">30日停止</p>
+                  <div className="bg-red-100 p-3 rounded-xl border border-red-200">
+                    <p className="text-[10px] text-red-600 mb-1">2回目以降</p>
+                    <p className="text-base font-black text-red-800">該当日より1カ月の予約停止</p>
                   </div>
                 </div>
               </div>
               <p className="text-[10px] font-black text-red-700">
                 <AlertTriangle className="inline w-3 h-3 mr-1" />
-                災害・大雪などのやむを得ない場合はペナルティが免除されます。キャンセル時に必ず「免除申告」にチェックを入れてください。
+                災害・大雪などのやむを得ない場合はペナルティが免除されます。必ず管理者に申告してください。
               </p>
             </div>
           </section>
 
           <section>
-            <h3 className="flex items-center text-blue-800 text-2xl mb-8 border-l-[10px] border-blue-700 pl-6 tracking-tight font-black">④ 遵守事項</h3>
+            <h3 className="flex items-center text-red-800 text-2xl mb-8 border-l-[10px] border-red-700 pl-6 tracking-tight font-black">④ 利用ルール違反について</h3>
+            <div className="bg-white p-8 rounded-[3rem] space-y-4 shadow-inner border-2 border-red-100">
+              <p className="text-sm font-bold text-red-900 mb-4">
+                次のような状況が発覚した場合は、一定期間（最長半年ほど）利用をお断りすることがございます。
+              </p>
+              <ul className="space-y-3 font-bold text-gray-700 text-sm">
+                <li className="flex items-start">
+                  <span className="text-red-500 mr-2">・</span>
+                  社員枠で申し込みされたにも関わらず社員不在での利用
+                </li>
+                <li className="flex items-start">
+                  <span className="text-red-500 mr-2">・</span>
+                  代表者不在での利用
+                </li>
+                <li className="flex items-start">
+                  <span className="text-red-500 mr-2">・</span>
+                  申請名簿以外の方の利用
+                </li>
+                <li className="flex items-start">
+                  <span className="text-red-500 mr-2">・</span>
+                  名義貸しでの利用
+                </li>
+                <li className="flex items-start">
+                  <span className="text-red-500 mr-2">・</span>
+                  備品破損などの報告怠慢
+                </li>
+                <li className="flex items-start">
+                  <span className="text-red-500 mr-2">・</span>
+                  利用ルール違反
+                </li>
+                <li className="flex items-start">
+                  <span className="text-red-500 mr-2">・</span>
+                  予約者間での予約の融通
+                </li>
+              </ul>
+            </div>
+          </section>
+
+          <section>
+            <h3 className="flex items-center text-blue-800 text-2xl mb-8 border-l-[10px] border-blue-700 pl-6 tracking-tight font-black">⑤ 遵守事項</h3>
             <ul className="space-y-4 font-bold text-gray-700">
               <li className="flex items-start bg-gray-50/80 p-4 rounded-[2rem] border border-gray-100">
                 <span className="bg-blue-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-[10px] mr-4 flex-shrink-0 font-black">1</span>
