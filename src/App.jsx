@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban, Mail, Key, UserCheck, MousePointerClick, RotateCcw, Filter, Unlock, BarChart3, Megaphone, MessageSquare, AlertOctagon, Settings, Edit2 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, query, writeBatch, setDoc } from 'firebase/firestore';
 
 // --- Firebase 設定 ---
@@ -21,8 +21,9 @@ const db = getFirestore(app);
 const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'kaiteki-gym-production-v2';
 const safeAppId = String(rawAppId).replace(/\//g, '-');
 
+// ★無料プラン対応のため、アクセス保護用の共通パスワードを復帰
 const PORTAL_PASSWORD = "kaiteki-user";
-const ADMIN_PASSWORD = "admin123";
+
 const ADMIN_CC_EMAIL = "MCJP-DG-RIX_TOYAMA_TAIIKUKAN@mchcgr.com";
 
 // --- 初期登録団体リスト ---
@@ -317,16 +318,21 @@ function TimeGridSelector({ selectedDate, reservations, currentStartTime, curren
 
 // --- メインコンポーネント ---
 export default function App() {
+  // ★ ポータルのアクセス制限状態
+  const [isPortalAuthorized, setIsPortalAuthorized] = useState(false);
+
   const [activeTab, setActiveTab] = useState('calendar');
   const [toastMessage, setToastMessage] = useState(null);
   const [preSelectedDate, setPreSelectedDate] = useState('');
   
-  const [isPortalAuthorized, setIsPortalAuthorized] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [emailInput, setEmailInput] = useState('');
   const [passInput, setPassInput] = useState('');
   
   const [user, setUser] = useState(null);
+  // Emailを保持している認証ユーザーのみを管理者とみなす
+  const isAdmin = !!(user && user.email); 
+
   const [reservations, setReservations] = useState([]);
   const [closedDays, setClosedDays] = useState([]);
   const [groups, setGroups] = useState([]); 
@@ -354,6 +360,15 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return;
+    
+    // URLハッシュによる管理者ログイン画面の隠し導線
+    const handleHashChange = () => {
+      if (window.location.hash === '#admin') {
+        setShowLoginModal(true);
+      }
+    };
+    handleHashChange();
+    window.addEventListener('hashchange', handleHashChange);
     
     const resRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'reservations');
     const unsubRes = onSnapshot(resRef, (snapshot) => {
@@ -415,25 +430,13 @@ export default function App() {
       unsubReports();
       unsubAnnounce();
       unsubPenSettings();
+      window.removeEventListener('hashchange', handleHashChange);
     };
   }, [user]);
 
   const showToast = (msg) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3000);
-  };
-
-  const handleAdminLogin = (e) => {
-    e.preventDefault();
-    if (passInput === ADMIN_PASSWORD) {
-      setIsAdmin(true);
-      setShowLoginModal(false);
-      setPassInput('');
-      setActiveTab('admin');
-      showToast('管理者としてログインしました');
-    } else {
-      alert('パスワードが正しくありません');
-    }
   };
 
   const handlePortalLogin = (e) => {
@@ -446,10 +449,43 @@ export default function App() {
     }
   };
 
-  if (!isPortalAuthorized) {
+  const handleAdminLogin = async (e) => {
+    e.preventDefault();
+    try {
+      await signInWithEmailAndPassword(auth, emailInput, passInput);
+      setShowLoginModal(false);
+      setEmailInput('');
+      setPassInput('');
+      setActiveTab('admin');
+      setIsPortalAuthorized(true); // 管理者ログイン成功時はポータル認証もパスさせる
+      showToast('管理者としてログインしました');
+      // ハッシュを消去
+      if (window.location.hash === '#admin') {
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
+    } catch (error) {
+      console.error(error);
+      alert('メールアドレスまたはパスワードが正しくありません。');
+    }
+  };
+
+  const handleAdminLogout = async () => {
+    try {
+      await signOut(auth);
+      // ログアウト後は再度匿名ログインして一般ユーザー状態に戻す
+      await signInAnonymously(auth);
+      setActiveTab('calendar');
+      showToast('ログアウトしました');
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  // ★ 共通アクセス認証画面
+  if (!isPortalAuthorized && !isAdmin) {
     return (
-      <div className="min-h-screen bg-blue-900 flex items-center justify-center p-4">
-        <div className="bg-white p-10 rounded-[3rem] shadow-2xl w-full max-w-md text-center space-y-8 animate-in zoom-in duration-500">
+      <div className="min-h-screen bg-blue-900 flex items-center justify-center p-4 relative">
+        <div className="bg-white p-10 rounded-[3rem] shadow-2xl w-full max-w-md text-center space-y-8 animate-in zoom-in duration-500 z-10">
           <div className="flex justify-center">
             <div className="bg-blue-100 p-4 rounded-3xl text-blue-700">
               <KeyRound className="h-12 w-12" />
@@ -476,6 +512,23 @@ export default function App() {
             </button>
           </form>
         </div>
+        
+        {/* 管理者ログインモーダル（隠しURLから呼び出された場合） */}
+        {showLoginModal && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+            <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-sm">
+              <h3 className="text-xl font-bold mb-6 flex items-center text-blue-800"><ShieldCheck className="mr-3 h-6 w-6"/>管理者ログイン</h3>
+              <form onSubmit={handleAdminLogin}>
+                <input type="email" autoFocus value={emailInput} onChange={(e) => setEmailInput(e.target.value)} required className="w-full border-2 border-gray-100 p-3 rounded-xl mb-4 text-sm font-bold focus:border-blue-500 outline-none transition-all shadow-inner" placeholder="管理者メールアドレス" />
+                <input type="password" value={passInput} onChange={(e) => setPassInput(e.target.value)} required className="w-full border-2 border-gray-100 p-3 rounded-xl mb-6 text-center text-lg tracking-widest focus:border-blue-500 outline-none transition-all shadow-inner" placeholder="パスワード" />
+                <div className="flex space-x-3">
+                  <button type="button" onClick={() => {setShowLoginModal(false); window.history.replaceState(null, '', window.location.pathname + window.location.search);}} className="flex-1 text-gray-500 py-2 font-bold hover:bg-gray-100 rounded-xl transition-colors">閉じる</button>
+                  <button type="submit" className="flex-1 bg-blue-600 text-white py-2 rounded-xl font-bold hover:bg-blue-700 shadow-md transition-all active:scale-95">ログイン</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -489,12 +542,8 @@ export default function App() {
             <div>
               <div className="flex items-center">
                 <h1 className="text-xl font-bold tracking-tight mr-2 font-bold">KAITEKI体育館</h1>
-                {!isAdmin ? (
-                  <button onClick={() => setShowLoginModal(true)} className="p-1.5 hover:bg-blue-700 rounded-full transition-colors border border-blue-400/30">
-                    <Lock className="h-4 w-4 text-blue-300" />
-                  </button>
-                ) : (
-                  <button onClick={() => {setIsAdmin(false); setActiveTab('calendar');}} className="flex items-center text-[10px] bg-red-600 px-3 py-1 rounded-full font-bold hover:bg-red-700 shadow">
+                {isAdmin && (
+                  <button onClick={handleAdminLogout} className="flex items-center text-[10px] bg-red-600 px-3 py-1 rounded-full font-bold hover:bg-red-700 shadow">
                     <LogOut className="h-3 w-3 mr-1" />解除
                   </button>
                 )}
@@ -568,14 +617,16 @@ export default function App() {
         )}
       </main>
 
-      {showLoginModal && (
+      {/* アプリ内からの管理者ログイン呼び出し用モーダル（ハッシュ対応用） */}
+      {showLoginModal && !isAdmin && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm print:hidden">
           <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-sm">
-            <h3 className="text-xl font-bold mb-6 flex items-center text-blue-800"><Lock className="mr-3 h-6 w-6"/>管理者ログイン</h3>
+            <h3 className="text-xl font-bold mb-6 flex items-center text-blue-800"><ShieldCheck className="mr-3 h-6 w-6"/>管理者ログイン</h3>
             <form onSubmit={handleAdminLogin}>
-              <input type="password" autoFocus value={passInput} onChange={(e) => setPassInput(e.target.value)} className="w-full border-2 border-gray-100 p-3 rounded-xl mb-6 text-center text-lg tracking-widest focus:border-blue-500 outline-none transition-all shadow-inner" placeholder="パスワード" />
+              <input type="email" autoFocus value={emailInput} onChange={(e) => setEmailInput(e.target.value)} required className="w-full border-2 border-gray-100 p-3 rounded-xl mb-4 text-sm font-bold focus:border-blue-500 outline-none transition-all shadow-inner" placeholder="管理者メールアドレス" />
+              <input type="password" value={passInput} onChange={(e) => setPassInput(e.target.value)} required className="w-full border-2 border-gray-100 p-3 rounded-xl mb-6 text-center text-lg tracking-widest focus:border-blue-500 outline-none transition-all shadow-inner" placeholder="パスワード" />
               <div className="flex space-x-3">
-                <button type="button" onClick={() => setShowLoginModal(false)} className="flex-1 text-gray-500 py-2 font-bold hover:bg-gray-100 rounded-xl transition-colors">閉じる</button>
+                <button type="button" onClick={() => {setShowLoginModal(false); window.history.replaceState(null, '', window.location.pathname + window.location.search);}} className="flex-1 text-gray-500 py-2 font-bold hover:bg-gray-100 rounded-xl transition-colors">閉じる</button>
                 <button type="submit" className="flex-1 bg-blue-600 text-white py-2 rounded-xl font-bold hover:bg-blue-700 shadow-md transition-all active:scale-95">ログイン</button>
               </div>
             </form>
