@@ -519,7 +519,7 @@ export default function App() {
             </div>
           </div>
           <div className="space-y-2">
-            <h1 className="text-3xl font-black text-blue-950">KAITEKI体育館</h1>
+            <h1 className="text-3xl font-black text-blue-950">KAITEKIケミカル体育館</h1>
             <p className="text-gray-500 font-bold">予約システム アクセス認証</p>
           </div>
           <form onSubmit={handlePortalLogin} className="space-y-6">
@@ -568,7 +568,7 @@ export default function App() {
             <Building className="h-8 w-8 text-blue-200" />
             <div>
               <div className="flex items-center">
-                <h1 className="text-xl font-bold tracking-tight mr-2 font-bold">KAITEKI体育館</h1>
+                <h1 className="text-xl font-bold tracking-tight mr-2 font-bold">KAITEKIケミカル体育館</h1>
                 {isAdmin && (
                   <button onClick={handleAdminLogout} className="flex items-center text-[10px] bg-red-600 px-3 py-1 rounded-full font-bold hover:bg-red-700 shadow">
                     <LogOut className="h-3 w-3 mr-1" />解除
@@ -1848,7 +1848,7 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
     const uniqueEmails = [...new Set(reservedUsersInPeriod.map(u => u.email))];
     const toField = uniqueEmails.join(',');
     const periodDisplay = targetDates.length > 1 ? `${targetDates[0]} 〜 ${targetDates[targetDates.length - 1]}` : targetDates[0];
-    const subject = encodeURIComponent("【重要】KAITEKI体育館 施設休館に伴う予約キャンセルのお知らせ");
+    const subject = encodeURIComponent("【重要】KAITEKIケミカル体育館 施設休館に伴う予約キャンセルのお知らせ");
     const body = encodeURIComponent(`予約責任者様\n\n施設休館に伴う予約取り消しのお知らせです。\n\n【休館期間】\n${periodDisplay}\n${closedReason ? `【理由】\n${closedReason}\n` : ''}\n本件に関するお問い合わせは管理担当までお願いいたします。\n`);
     window.location.href = `mailto:${toField}?cc=${ADMIN_CC_EMAIL}&subject=${subject}&body=${body}`;
   };
@@ -2348,7 +2348,7 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
 
       <div className="bg-white p-4 min-h-[800px] font-sans print:p-0 print:min-h-0">
         <div className="text-center mb-6 print:mb-2">
-          <h2 className="text-2xl print:text-lg font-bold border-b-[3px] border-black inline-block px-12 pb-2 tracking-widest">KAITEKI体育館 利用予定表 (7日間)</h2>
+          <h2 className="text-2xl print:text-lg font-bold border-b-[3px] border-black inline-block px-12 pb-2 tracking-widest">KAITEKIケミカル体育館 利用予定表 (7日間)</h2>
           <p className="text-base print:text-sm font-bold mt-2">{displayDays[0]} 〜 {displayDays[6]}</p>
         </div>
         
@@ -2521,7 +2521,7 @@ function MonthlyPrintView({ reservations, closedDays, monthStr, onBack }) {
 
       <div className="bg-white p-4 min-h-[800px] font-sans print:p-0 print:min-h-0">
         <div className="text-center mb-6">
-          <h2 className="text-2xl font-bold border-b-[3px] border-black inline-block px-12 pb-2 tracking-widest">KAITEKI体育館 月間予定表 ({year}年{month}月)</h2>
+          <h2 className="text-2xl font-bold border-b-[3px] border-black inline-block px-12 pb-2 tracking-widest">KAITEKIケミカル体育館 月間予定表 ({year}年{month}月)</h2>
         </div>
         
         <div className="border-[3px] border-black bg-white">
