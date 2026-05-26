@@ -341,6 +341,91 @@ export default function App() {
   const [penaltySettings, setPenaltySettings] = useState({ secondPenaltyDays: 30 });
   const [isLoading, setIsLoading] = useState(true);
 
+  // Firestore listeners
+  useEffect(() => {
+    // We only set up listeners if we are authenticated (isAdmin or isPortalAuthorized)
+    if (!user || (!isAdmin && !isPortalAuthorized)) {
+        setIsLoading(false);
+        return;
+    }
+
+    setIsLoading(true);
+
+    const resRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'reservations');
+    const unsubRes = onSnapshot(resRef, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setReservations(data);
+      setIsLoading(false);
+    }, (err) => { 
+      console.error("Firestore Error (reservations):", err); 
+      setIsLoading(false); 
+    });
+
+    const closedRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'closed_days');
+    const unsubClosed = onSnapshot(closedRef, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setClosedDays(data);
+    }, (err) => {
+        console.error("Firestore Error (closed_days):", err);
+    });
+
+    const groupsRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'groups');
+    const unsubGroups = onSnapshot(groupsRef, (snapshot) => {
+      if (snapshot.empty) {
+        if (isAdmin) {
+          const batch = writeBatch(db);
+          INITIAL_GROUPS.forEach(g => {
+            const docRef = doc(groupsRef);
+            batch.set(docRef, { ...g, createdAt: new Date().toISOString() });
+          });
+          batch.commit().catch(err => console.error("Initial groups error:", err));
+        }
+      } else {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setGroups(data.sort((a,b) => a.name.localeCompare(b.name, 'ja')));
+      }
+    }, (err) => {
+        console.error("Firestore Error (groups):", err);
+    });
+
+    const reportsRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'reports');
+    const unsubReports = onSnapshot(reportsRef, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setReports(data);
+    }, (err) => {
+        console.error("Firestore Error (reports):", err);
+    });
+
+    // お知らせメッセージとペナルティ設定の取得
+    const announceRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'system_messages', 'announcement');
+    const unsubAnnounce = onSnapshot(announceRef, (docSnap) => {
+      if (docSnap.exists()) setAnnouncementText(docSnap.data().text || '');
+      else setAnnouncementText('');
+    }, (err) => {
+        console.error("Firestore Error (announcement):", err);
+    });
+
+    const penSettingsRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'settings', 'penalty');
+    const unsubPenSettings = onSnapshot(penSettingsRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setPenaltySettings({
+          secondPenaltyDays: docSnap.data().secondPenaltyDays || 30
+        });
+      }
+    }, (err) => {
+        console.error("Firestore Error (penalty settings):", err);
+    });
+
+    return () => {
+      unsubRes();
+      unsubClosed();
+      unsubGroups();
+      unsubReports();
+      unsubAnnounce();
+      unsubPenSettings();
+    };
+  }, [user, isAdmin, isPortalAuthorized]);
+
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -370,66 +455,7 @@ export default function App() {
     handleHashChange();
     window.addEventListener('hashchange', handleHashChange);
     
-    const resRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'reservations');
-    const unsubRes = onSnapshot(resRef, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setReservations(data);
-      setIsLoading(false);
-    }, (err) => { 
-      console.error("Firestore Error:", err); 
-      setIsLoading(false); 
-    });
-
-    const closedRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'closed_days');
-    const unsubClosed = onSnapshot(closedRef, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setClosedDays(data);
-    });
-
-    const groupsRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'groups');
-    const unsubGroups = onSnapshot(groupsRef, (snapshot) => {
-      if (snapshot.empty) {
-        const batch = writeBatch(db);
-        INITIAL_GROUPS.forEach(g => {
-          const docRef = doc(groupsRef);
-          batch.set(docRef, { ...g, createdAt: new Date().toISOString() });
-        });
-        batch.commit();
-      } else {
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setGroups(data.sort((a,b) => a.name.localeCompare(b.name, 'ja')));
-      }
-    });
-
-    const reportsRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'reports');
-    const unsubReports = onSnapshot(reportsRef, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setReports(data);
-    });
-
-    // お知らせメッセージとペナルティ設定の取得
-    const announceRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'system_messages', 'announcement');
-    const unsubAnnounce = onSnapshot(announceRef, (docSnap) => {
-      if (docSnap.exists()) setAnnouncementText(docSnap.data().text || '');
-      else setAnnouncementText('');
-    });
-
-    const penSettingsRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'settings', 'penalty');
-    const unsubPenSettings = onSnapshot(penSettingsRef, (docSnap) => {
-      if (docSnap.exists()) {
-        setPenaltySettings({
-          secondPenaltyDays: docSnap.data().secondPenaltyDays || 30
-        });
-      }
-    });
-
     return () => {
-      unsubRes();
-      unsubClosed();
-      unsubGroups();
-      unsubReports();
-      unsubAnnounce();
-      unsubPenSettings();
       window.removeEventListener('hashchange', handleHashChange);
     };
   }, [user]);
@@ -475,6 +501,7 @@ export default function App() {
       // ログアウト後は再度匿名ログインして一般ユーザー状態に戻す
       await signInAnonymously(auth);
       setActiveTab('calendar');
+      setIsPortalAuthorized(false);
       showToast('ログアウトしました');
     } catch (error) {
       console.error(error);
@@ -2154,13 +2181,13 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
           <h3 className="font-bold text-lg flex items-center text-blue-900"><Printer className="h-5 w-5 mr-2" /> 予定表の印刷プレビュー</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
-            {/* 5日間印刷 */}
+            {/* 7日間印刷 */}
             <div className="bg-blue-50 p-5 rounded-2xl border border-blue-100 space-y-4">
-              <div className="font-bold text-blue-800 border-b border-blue-200 pb-2">体育館 掲示用 (5日間)</div>
+              <div className="font-bold text-blue-800 border-b border-blue-200 pb-2">体育館 掲示用 (7日間)</div>
               <div className="flex flex-col gap-3">
                 <input type="date" value={printWeekStart} onChange={(e)=>setPrintWeekStart(e.target.value)} className="border p-3 rounded-xl text-sm font-bold outline-none focus:border-blue-500" />
                 <button onClick={()=>setShowPrintView(true)} className="bg-blue-600 text-white p-3 rounded-xl font-bold hover:bg-blue-700 shadow-md flex items-center justify-center space-x-2 transition-all">
-                  <Printer className="w-4 h-4"/><span>5日間の印刷プレビュー</span>
+                  <Printer className="w-4 h-4"/><span>7日間の印刷プレビュー</span>
                 </button>
               </div>
             </div>
@@ -2276,7 +2303,7 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
 
 function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
   const weekStart = new Date(weekStartStr);
-  const displayDays = Array.from({ length: 5 }, (_, i) => {
+  const displayDays = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart);
     d.setDate(weekStart.getDate() + i);
     return formatDateStr(d);
@@ -2289,10 +2316,14 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
   useEffect(() => {
     const style = document.createElement('style');
     style.innerHTML = `
-      @page { size: landscape; margin: 8mm; }
+      @page { size: A3 landscape; margin: 10mm; }
       @media print { 
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } 
         body { background-color: white !important; }
+        /* 7日分をA3横に収めるための微調整 */
+        table { page-break-inside: auto; }
+        tr { page-break-inside: avoid; page-break-after: auto; }
+        td, th { padding: 2px !important; font-size: 10px !important; line-height: 1.2 !important; }
       }
     `;
     document.head.appendChild(style);
@@ -2305,8 +2336,8 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
         <div className="flex items-center space-x-3">
           <Printer className="h-8 w-8 text-blue-600" />
           <div>
-            <h3 className="text-xl font-bold">掲示用 5日間予定表 (印刷)</h3>
-            <p className="text-xs text-gray-500 font-bold">自動的に横向き設定になっています。</p>
+            <h3 className="text-xl font-bold">掲示用 7日間予定表 (印刷)</h3>
+            <p className="text-xs text-gray-500 font-bold">自動的にA3横向き設定になっています。</p>
           </div>
         </div>
         <div className="flex space-x-3">
@@ -2316,17 +2347,17 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
       </div>
 
       <div className="bg-white p-4 min-h-[800px] font-sans print:p-0 print:min-h-0">
-        <div className="text-center mb-6">
-          <h2 className="text-2xl font-bold border-b-[3px] border-black inline-block px-12 pb-2 tracking-widest">KAITEKI体育館 利用予定表 (5日間)</h2>
-          <p className="text-base font-bold mt-2">{displayDays[0]} 〜 {displayDays[4]}</p>
+        <div className="text-center mb-6 print:mb-2">
+          <h2 className="text-2xl print:text-lg font-bold border-b-[3px] border-black inline-block px-12 pb-2 tracking-widest">KAITEKI体育館 利用予定表 (7日間)</h2>
+          <p className="text-base print:text-sm font-bold mt-2">{displayDays[0]} 〜 {displayDays[6]}</p>
         </div>
         
         <div className="border-[3px] border-black bg-white">
           <table className="w-full table-fixed border-collapse text-[10px]">
             <thead>
               <tr className="bg-gray-100 border-b-[3px] border-black">
-                <th className="border-r-[3px] border-black p-1 w-[8%] font-bold text-gray-800">日付</th>
-                <th className="border-r-[3px] border-black p-1 w-[10%] font-bold text-gray-800">施設 / コート</th>
+                <th className="border-r-[3px] border-black p-1 w-[7%] font-bold text-gray-800">日付</th>
+                <th className="border-r-[3px] border-black p-1 w-[9%] font-bold text-gray-800">施設 / コート</th>
                 {TIME_SLOTS.map((t, i) => (
                   <th key={t} className={`p-0.5 font-mono text-[8px] sm:text-[9px] font-bold text-gray-800 border-gray-300 ${i < TIME_SLOTS.length - 1 ? 'border-r' : ''}`}>
                     {t.replace(/^0/, '')}
@@ -2461,7 +2492,7 @@ function MonthlyPrintView({ reservations, closedDays, monthStr, onBack }) {
   useEffect(() => {
     const style = document.createElement('style');
     style.innerHTML = `
-      @page { size: landscape; margin: 8mm; }
+      @page { size: A3 landscape; margin: 10mm; }
       @media print { 
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } 
         body { background-color: white !important; }
@@ -2479,7 +2510,7 @@ function MonthlyPrintView({ reservations, closedDays, monthStr, onBack }) {
           <Printer className="h-8 w-8 text-indigo-600" />
           <div>
             <h3 className="text-xl font-bold">管理者 確認用 予定表 (月間タイムライン)</h3>
-            <p className="text-xs text-gray-500 font-bold">自動的に横向き設定になっています。</p>
+            <p className="text-xs text-gray-500 font-bold">自動的にA3横向き設定になっています。</p>
           </div>
         </div>
         <div className="flex space-x-3">
