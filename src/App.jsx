@@ -106,6 +106,112 @@ const calculateDurationMinutes = (start, end) => {
   return (eH * 60 + eM) - (sH * 60 + sM);
 };
 
+// --- 祝日計算ロジック (日本の祝日法に基づく自動計算) ---
+const getSpringEquinox = (year) => {
+  if (year <= 2099) return Math.floor(20.8431 + 0.242194 * (year - 1980) - Math.floor((year - 1980) / 4));
+  return 20;
+};
+const getAutumnEquinox = (year) => {
+  if (year <= 2099) return Math.floor(23.2488 + 0.242194 * (year - 1980) - Math.floor((year - 1980) / 4));
+  return 23;
+};
+const getNthMonday = (year, month, n) => {
+  const firstDay = new Date(year, month - 1, 1);
+  let dayOfWeek = firstDay.getDay();
+  let firstMondayDate = dayOfWeek <= 1 ? 2 - dayOfWeek : 9 - dayOfWeek;
+  return new Date(year, month - 1, firstMondayDate + 7 * (n - 1));
+};
+
+const generateHolidaysForYear = (year) => {
+  const hols = [];
+  const add = (m, d) => {
+    const yStr = year;
+    const mStr = String(m).padStart(2, '0');
+    const dStr = String(d).padStart(2, '0');
+    hols.push(`${yStr}-${mStr}-${dStr}`);
+  };
+  
+  // 固定の祝日
+  add(1, 1); // 元日
+  add(2, 11); // 建国記念の日
+  add(2, 23); // 天皇誕生日
+  add(4, 29); // 昭和の日
+  add(5, 3); // 憲法記念日
+  add(5, 4); // みどりの日
+  add(5, 5); // こどもの日
+  add(8, 11); // 山の日
+  add(11, 3); // 文化の日
+  add(11, 23); // 勤労感謝の日
+  
+  // 春分・秋分
+  add(3, getSpringEquinox(year));
+  const autumnEquinox = getAutumnEquinox(year);
+  add(9, autumnEquinox);
+  
+  // ハッピーマンデー (第N月曜日)
+  const adultDay = getNthMonday(year, 1, 2);
+  add(adultDay.getMonth() + 1, adultDay.getDate()); // 成人の日
+  const marineDay = getNthMonday(year, 7, 3);
+  add(marineDay.getMonth() + 1, marineDay.getDate()); // 海の日
+  const keiroDay = getNthMonday(year, 9, 3);
+  add(keiroDay.getMonth() + 1, keiroDay.getDate()); // 敬老の日
+  const sportsDay = getNthMonday(year, 10, 2);
+  add(sportsDay.getMonth() + 1, sportsDay.getDate()); // スポーツの日
+
+  hols.sort();
+  const finalHols = new Set(hols);
+  
+  // 振替休日の計算
+  hols.forEach(hDateStr => {
+    const d = new Date(hDateStr);
+    if (d.getDay() === 0) {
+      let nextDay = new Date(d);
+      while(true) {
+        nextDay.setDate(nextDay.getDate() + 1);
+        const nextStr = formatDateStr(nextDay);
+        if (!finalHols.has(nextStr)) {
+          finalHols.add(nextStr);
+          break;
+        }
+      }
+    }
+  });
+
+  // 国民の休日 (祝日に挟まれた平日: 主に敬老の日と秋分の日の間)
+  const keiroDate = keiroDay.getDate();
+  if (autumnEquinox - keiroDate === 2) {
+    const natHol = new Date(year, 8, keiroDate + 1);
+    finalHols.add(formatDateStr(natHol));
+  }
+
+  return Array.from(finalHols).sort();
+};
+
+// 計算結果のキャッシュ
+const getHolidaysMemoized = (() => {
+  const cache = {};
+  return (year) => {
+    if (!cache[year]) cache[year] = generateHolidaysForYear(year);
+    return cache[year];
+  };
+})();
+
+const isHoliday = (dateStr) => {
+  if (!dateStr) return false;
+  const year = parseInt(dateStr.split('-')[0], 10);
+  const holidays = getHolidaysMemoized(year);
+  return holidays.includes(dateStr);
+};
+
+const isWeekendOrHoliday = (dateStr) => {
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  const day = d.getDay();
+  if (day === 0 || day === 6) return true; // 土日
+  return isHoliday(dateStr); // または祝日
+};
+
+
 // --- ペナルティ判定関数 ---
 const isPenaltyTarget = (res) => {
   const now = new Date();
@@ -174,17 +280,26 @@ function InputField({ label, value, onChange, placeholder, type = "text" }) {
   );
 }
 
-function TimeGridSelector({ selectedDate, reservations, currentStartTime, currentEndTime, currentFacilities, currentCourts, onSelectionChange }) {
+function TimeGridSelector({ selectedDate, reservations, currentStartTime, currentEndTime, currentFacilities, currentCourts, isAdmin, onSelectionChange }) {
   const [dragStart, setDragStart] = useState(null);
   const [dragCurrent, setDragCurrent] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
 
   const occupiedMap = useMemo(() => {
     const map = {};
+    const isHolidayOrWeekend = isWeekendOrHoliday(selectedDate);
+
     RESOURCES.forEach((res, rIndex) => {
       TIME_SLOTS.forEach((t, cIndex) => {
         const start = t;
         const end = END_TIMES[cIndex];
+
+        // 土日祝の17:00以降はシステム的に予約不可（管理者は除く）
+        if (!isAdmin && isHolidayOrWeekend && start >= "17:00") {
+           map[`${rIndex}-${cIndex}`] = true;
+           return;
+        }
+
         const isOccupied = reservations.some(r => {
           if (r.date !== selectedDate) return false;
           if (r.status === 'cancelled') return false; 
@@ -716,6 +831,17 @@ function CalendarView({ reservations, closedDays, onReserveClick }) {
               const hasApp = dayRes.length > 0;
               const isToday = formatDateStr(new Date()) === dStr;
               
+              const isHol = isHoliday(dStr);
+              const dateObj = new Date(currentYear, currentMonth - 1, d);
+              const dayOfWeek = dateObj.getDay();
+              
+              let dateColor = 'text-gray-700';
+              if (isClosed) dateColor = 'text-red-500';
+              else if (dStr === selectedDateStr) dateColor = 'text-blue-900';
+              else if (isToday) dateColor = 'text-orange-600';
+              else if (dayOfWeek === 0 || isHol) dateColor = 'text-red-500';
+              else if (dayOfWeek === 6) dateColor = 'text-blue-500';
+
               return (
                 <button 
                   key={d} 
@@ -724,9 +850,13 @@ function CalendarView({ reservations, closedDays, onReserveClick }) {
                     ${dStr === selectedDateStr ? 'border-blue-600 bg-blue-50 shadow ring-2 ring-blue-100' : 'border-gray-50 hover:border-blue-200 hover:bg-blue-50/50'} 
                     ${isToday ? 'bg-orange-50/50' : ''}
                     ${isClosed ? 'bg-red-50/30 border-red-100' : ''}
+                    ${isHol && !isClosed && dStr !== selectedDateStr ? 'bg-red-50/10' : ''}
                   `}
                 >
-                  <span className={`text-base font-bold ${isClosed ? 'text-red-500' : dStr === selectedDateStr ? 'text-blue-900' : (isToday ? 'text-orange-600' : 'text-gray-700')}`}>{d}</span>
+                  <div className="flex flex-col items-center">
+                    <span className={`text-base font-bold ${dateColor}`}>{d}</span>
+                    {isHol && <span className="text-[8px] font-black text-red-500 mt-0.5">祝</span>}
+                  </div>
                   <div className="flex flex-col items-center space-y-0.5">
                     {isClosed && <span className="text-[8px] font-black text-red-500 tracking-tighter">休館</span>}
                     <div className="flex space-x-1 mb-1">
@@ -794,6 +924,7 @@ function CalendarView({ reservations, closedDays, onReserveClick }) {
 }
 
 function ReservationForm({ initialDate, reservations, closedDays, groups, user, onSuccess }) {
+  const isAdmin = !!(user && user.email);
   const [authIdInput, setAuthIdInput] = useState('');
   const [userType, setUserType] = useState(''); 
   const [selectedDate, setSelectedDate] = useState(initialDate || '');
@@ -908,11 +1039,6 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
     }
 
     if (selectedFacilities.includes('体育館') && selectedCourts.length === 0) return alert("コート(A-F)を選んでください。");
-    
-    if (targetDates.length > maxRecurringCount) {
-      const typeLabel = userType === 'mcc' ? '会社の部活 (1年分)' : userType === 'soumu' ? '総務 (1年分)' : userType === 'employee' ? '従業員 (約3ヶ月分)' : '一般・団体 (約2ヶ月分)';
-      return alert(`${typeLabel}の定期予約は最大${maxRecurringCount}回分までまとめて申請可能です。`);
-    }
 
     const selectedGroupData = groups.find(g => g.id === formData.groupId);
     if (!selectedGroupData) return alert("団体が見つかりません。");
@@ -924,6 +1050,15 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
         const endStr = formatDateStr(penaltyEnd);
         return alert(`【予約停止のお知らせ】\n前日・当日または無断キャンセルのペナルティにより、${endStr}まで新規予約が停止されています。\n※災害等による免除申請漏れの場合は、管理者へご連絡ください。`);
       }
+    }
+
+    let requiresAdminOverride = false;
+    let adminOverrideMessages = [];
+
+    if (targetDates.length > maxRecurringCount) {
+      const typeLabel = userType === 'mcc' ? '会社の部活 (1年分)' : userType === 'soumu' ? '総務 (1年分)' : userType === 'employee' ? '従業員 (約3ヶ月分)' : '一般・団体 (約2ヶ月分)';
+      adminOverrideMessages.push(`・${typeLabel}の定期予約上限（${maxRecurringCount}回）を超えています。`);
+      requiresAdminOverride = true;
     }
 
     const today = new Date();
@@ -941,32 +1076,29 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
     for (const d of partitionedDates.valid) {
       const targetDateObj = new Date(d);
       if (userType === 'mcc' && targetDateObj > mccMaxDate) {
-        return alert(`会社の部活（MCC等）の予約は、次年度の3月末（${formatDateStr(mccMaxDate)}）まで可能です。`);
+        adminOverrideMessages.push(`・会社の部活の予約可能期間（次年度3月末まで）を超えています。`);
+        requiresAdminOverride = true; break;
       }
       if (userType === 'employee' && targetDateObj > employeeMaxDate) {
-        return alert(`従業員の予約は、本日より3ヶ月先（${formatDateStr(employeeMaxDate)}）まで可能です。`);
+        adminOverrideMessages.push(`・従業員の予約可能期間（3ヶ月先まで）を超えています。`);
+        requiresAdminOverride = true; break;
       }
       if (userType === 'external' && targetDateObj > externalMaxDate) {
-        return alert(`一般・団体（近隣校区等）の予約は、本日より2ヶ月先（${formatDateStr(externalMaxDate)}）まで可能です。`);
+        adminOverrideMessages.push(`・一般・団体の予約可能期間（2ヶ月先まで）を超えています。`);
+        requiresAdminOverride = true; break;
       }
-      // soumu は期間制限なし
     }
 
+    // 土日祝の時間制限
     for (const d of partitionedDates.valid) {
-      if (selectedFacilities.includes('体育館')) {
-        const occ = getOccupiedCourts(d);
-        const conflict = selectedCourts.some(c => occ.includes(c));
-        if (conflict) return alert(`${d} に指定のコートが既に予約されています。`);
-      }
-      if (selectedFacilities.includes('多目的室')) {
-        const roomConflict = reservations.some(r => 
-          r.date === d && r.place.includes('多目的室') && r.status !== 'cancelled' &&
-          isTimeOverlapping(formData.startTime, formData.endTime, r.startTime, r.endTime)
-        );
-        if (roomConflict) return alert(`${d} の多目的室は既に予約されています。`);
+      if (isWeekendOrHoliday(d)) {
+        if (formData.endTime > "17:00" || formData.startTime >= "17:00") {
+          adminOverrideMessages.push(`・${d} は土日・祝日のため、通常は17:00以降の予約はできません。`);
+          requiresAdminOverride = true; break;
+        }
       }
     }
-    
+
     const newBookingMinutes = calculateDurationMinutes(formData.startTime, formData.endTime);
     const isSixCourts = selectedFacilities.includes('体育館') && selectedCourts.length === 6;
 
@@ -1003,15 +1135,44 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
 
       if (!isExempt && currentTotalMinutes + additionalMinutes > limitMinutes) {
         const limitLabel = limitType === '30' ? '30' : '20';
-        return alert(`【${monthStr}】の予約上限（月間${limitLabel}時間）を超過します。\n・現在の消費枠: ${currentTotalMinutes / 60}時間 (※キャンセル分含む)\n・今回追加: ${additionalMinutes / 60}時間`);
+        adminOverrideMessages.push(`・【${monthStr}】の月間予約上限（${limitLabel}時間）を超過します。（今回追加で ${additionalMinutes / 60}h）`);
+        requiresAdminOverride = true;
       }
 
       // ★ 総務区分の場合は6面制限のチェックを行わない
       if (userType !== 'soumu' && isSixCourts && (currentSixCourtCount + newCount > 1)) {
-        return alert(`【${monthStr}】において、6面（全面）予約は月1回までしかできません。（現在の6面予約枠消費: ${currentSixCourtCount}回）`);
+        adminOverrideMessages.push(`・【${monthStr}】の全面(6面)予約の月間上限(1回)を超過します。`);
+        requiresAdminOverride = true;
       }
     }
 
+    if (requiresAdminOverride) {
+      if (isAdmin) {
+        const confirmMsg = "【管理者特権：以下の制限をオーバーしています】\n" + 
+                           adminOverrideMessages.join('\n') + 
+                           "\n\n※管理者権限でこの制限を無視して特例で予約を続行しますか？";
+        if (!window.confirm(confirmMsg)) return;
+      } else {
+        return alert("予約エラー：\n" + adminOverrideMessages.join('\n'));
+      }
+    }
+
+    // 重複チェックは特例でも突破不可（システムとして物理的に予約できないため）
+    for (const d of partitionedDates.valid) {
+      if (selectedFacilities.includes('体育館')) {
+        const occ = getOccupiedCourts(d);
+        const conflict = selectedCourts.some(c => occ.includes(c));
+        if (conflict) return alert(`${d} に指定のコートが既に予約されています。時間を変更してください。`);
+      }
+      if (selectedFacilities.includes('多目的室')) {
+        const roomConflict = reservations.some(r => 
+          r.date === d && r.place.includes('多目的室') && r.status !== 'cancelled' &&
+          isTimeOverlapping(formData.startTime, formData.endTime, r.startTime, r.endTime)
+        );
+        if (roomConflict) return alert(`${d} の多目的室は既に予約されています。時間を変更してください。`);
+      }
+    }
+    
     // 全てのチェックを通過したら確認モーダルを表示
     setShowConfirmModal(true);
   };
@@ -1179,7 +1340,7 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
                 <MousePointerClick className="w-5 h-5" /> 
                 スケジュールアシスタント（ドラッグ＆ドロップで予約）
               </label>
-              <p className="text-[10px] text-gray-500 font-bold mb-2">※ 以下の表で予約したい「時間」と「場所」をマウスでなぞると、自動で入力されます。</p>
+              <p className="text-[10px] text-gray-500 font-bold mb-2">※ 以下の表で予約したい「時間」と「場所」をマウスでなぞると、自動で入力されます。<br/>※ 土日・祝日はシステム上 17:00 までのご利用となります。</p>
               
               {selectedDate && !isSelectedDateClosed ? (
                 <TimeGridSelector 
@@ -1189,6 +1350,7 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
                   currentEndTime={formData.endTime}
                   currentFacilities={selectedFacilities}
                   currentCourts={selectedCourts}
+                  isAdmin={isAdmin}
                   onSelectionChange={({ startTime, endTime, facilities, courts }) => {
                     setFormData(prev => ({ ...prev, startTime, endTime }));
                     setSelectedFacilities(facilities);
@@ -2370,7 +2532,8 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                 const dateObj = new Date(d);
                 const isClosed = closedDateStrs.includes(d);
                 const dayLabel = `${d.split('-')[1]}/${d.split('-')[2]} (${dayLabels[dateObj.getDay()]})`;
-                const dayColor = dateObj.getDay() === 0 ? 'text-red-600' : dateObj.getDay() === 6 ? 'text-blue-600' : 'text-gray-900';
+                const isHol = isHoliday(d);
+                const dayColor = dateObj.getDay() === 0 || isHol ? 'text-red-600' : dateObj.getDay() === 6 ? 'text-blue-600' : 'text-gray-900';
 
                 return (
                   <React.Fragment key={d}>
@@ -2381,6 +2544,7 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                           {rIndex === 0 && (
                             <td rowSpan={RESOURCES.length} className={`border-r-[3px] border-black p-1 text-center font-bold bg-white ${dayColor} text-sm whitespace-nowrap`}>
                               {dayLabel}
+                              {isHol && <span className="text-[10px] text-red-500 ml-1">祝</span>}
                               {isClosed && <div className="text-[10px] text-red-500 mt-2 font-black">【休館】</div>}
                             </td>
                           )}
@@ -2542,7 +2706,8 @@ function MonthlyPrintView({ reservations, closedDays, monthStr, onBack }) {
                 const dateObj = new Date(d);
                 const isClosed = closedDateStrs.includes(d);
                 const dayLabel = `${d.split('-')[1]}/${d.split('-')[2]} (${dayLabels[dateObj.getDay()]})`;
-                const dayColor = dateObj.getDay() === 0 ? 'text-red-600' : dateObj.getDay() === 6 ? 'text-blue-600' : 'text-gray-900';
+                const isHol = isHoliday(d);
+                const dayColor = dateObj.getDay() === 0 || isHol ? 'text-red-600' : dateObj.getDay() === 6 ? 'text-blue-600' : 'text-gray-900';
 
                 return (
                   <React.Fragment key={d}>
@@ -2553,6 +2718,7 @@ function MonthlyPrintView({ reservations, closedDays, monthStr, onBack }) {
                           {rIndex === 0 && (
                             <td rowSpan={RESOURCES.length} className={`border-r-[3px] border-black p-1 text-center font-bold bg-white ${dayColor} text-sm whitespace-nowrap`}>
                               {dayLabel}
+                              {isHol && <span className="text-[10px] text-red-500 ml-1">祝</span>}
                               {isClosed && <div className="text-[10px] text-red-500 mt-2 font-black">【休館】</div>}
                             </td>
                           )}
