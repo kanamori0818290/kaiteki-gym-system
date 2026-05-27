@@ -2656,12 +2656,6 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                               const end = END_TIMES[cIndex];
                               const isLastSlot = cIndex === TIME_SLOTS.length - 1;
 
-                              if (isClosed) {
-                                cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''} bg-gray-200/50 bg-[repeating-linear-gradient(45deg,transparent,transparent_2px,rgba(0,0,0,0.1)_2px,rgba(0,0,0,0.1)_4px)]`}></td>);
-                                cIndex++;
-                                continue;
-                              }
-
                               const matchingRes = reservations.find(r => {
                                 if (r.date !== d || r.status === 'cancelled') return false;
                                 if (!isTimeOverlapping(start, end, r.startTime, r.endTime)) return false;
@@ -2704,7 +2698,12 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                                 );
                                 cIndex += span;
                               } else {
-                                cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''}`}></td>);
+                                const isRestricted = isWeekendOrHoliday(d) && start >= "17:00";
+                                if (isClosed || isRestricted) {
+                                  cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''} bg-gray-300/60 bg-[repeating-linear-gradient(45deg,transparent,transparent_2px,rgba(0,0,0,0.1)_2px,rgba(0,0,0,0.1)_4px)]`}></td>);
+                                } else {
+                                  cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''}`}></td>);
+                                }
                                 cIndex++;
                               }
                             }
@@ -2830,12 +2829,6 @@ function MonthlyPrintView({ reservations, closedDays, monthStr, onBack }) {
                               const end = END_TIMES[cIndex];
                               const isLastSlot = cIndex === TIME_SLOTS.length - 1;
 
-                              if (isClosed) {
-                                cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''} bg-gray-200/50 bg-[repeating-linear-gradient(45deg,transparent,transparent_2px,rgba(0,0,0,0.1)_2px,rgba(0,0,0,0.1)_4px)]`}></td>);
-                                cIndex++;
-                                continue;
-                              }
-
                               const matchingRes = reservations.find(r => {
                                 if (r.date !== d || r.status === 'cancelled') return false;
                                 if (!isTimeOverlapping(start, end, r.startTime, r.endTime)) return false;
@@ -2878,7 +2871,12 @@ function MonthlyPrintView({ reservations, closedDays, monthStr, onBack }) {
                                 );
                                 cIndex += span;
                               } else {
-                                cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''}`}></td>);
+                                const isRestricted = isWeekendOrHoliday(d) && start >= "17:00";
+                                if (isClosed || isRestricted) {
+                                  cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''} bg-gray-300/60 bg-[repeating-linear-gradient(45deg,transparent,transparent_2px,rgba(0,0,0,0.1)_2px,rgba(0,0,0,0.1)_4px)]`}></td>);
+                                } else {
+                                  cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''}`}></td>);
+                                }
                                 cIndex++;
                               }
                             }
