@@ -623,6 +623,72 @@ export default function App() {
     }
   };
 
+  const handleCalendarDelete = async (targetRes) => {
+    if (!isAdmin) {
+      const inputPass = window.prompt(`【${targetRes.name}】の予約を取り消します。\n予約時に設定した「取消用パスワード」を入力してください：`);
+      if (inputPass === null) return;
+      if (inputPass !== targetRes.deletePass) {
+        return alert("パスワードが正しくありません。");
+      }
+    }
+
+    const willPenalty = isPenaltyTarget(targetRes);
+    let isExemptChecked = false;
+
+    if (willPenalty) {
+      if (isAdmin) {
+        const doCancel = window.confirm("【警告：ペナルティ対象期間のキャンセルです】\n\nこの予約を取り消しますか？");
+        if (!doCancel) return;
+        isExemptChecked = window.confirm("このキャンセルを災害等による「特例免除（ペナルティなし）」扱いにしますか？\n\n・「OK」を選ぶと免除されます\n・「キャンセル」を選ぶとペナルティが付与されます");
+      } else {
+        const confirmPenalty = window.confirm("【警告：ペナルティ対象のキャンセルです】\n\nこのキャンセルは当日・無断キャンセルのため、ペナルティ（予約停止）の対象となります。\n本当にキャンセルを実行しますか？");
+        if (!confirmPenalty) return;
+      }
+    } else {
+      if (!window.confirm(`【${targetRes.name}】の予約を取り消しますか？`)) return;
+    }
+
+    try {
+      const batch = writeBatch(db);
+      
+      const resRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', targetRes.id);
+      batch.update(resRef, { 
+        status: 'cancelled',
+        cancelReason: isExemptChecked ? '災害等による特例免除' : '自己都合(カレンダーから)'
+      });
+
+      if (willPenalty && !isExemptChecked) {
+        const targetGroup = groups.find(g => g.id === targetRes.groupId);
+        if (targetGroup) {
+          const groupRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'groups', targetGroup.id);
+          const currentCount = targetGroup.penaltyCount || 0;
+          const newCount = currentCount + 1;
+          
+          let pDays = 0;
+          if (newCount === 1) pDays = 0; // 初回は記録のみ
+          else pDays = penaltySettings.secondPenaltyDays || 30;
+
+          let pUntil = targetGroup.penaltyUntil;
+          if (pDays > 0) {
+            const untilDate = new Date();
+            untilDate.setDate(untilDate.getDate() + pDays);
+            pUntil = untilDate.toISOString();
+          }
+
+          batch.update(groupRef, {
+            penaltyCount: newCount,
+            penaltyUntil: pUntil
+          });
+        }
+      }
+
+      await batch.commit();
+      showToast('予約を取り消しました');
+    } catch (err) {
+      alert("削除に失敗しました。");
+    }
+  };
+
   // ★ 共通アクセス認証画面
   if (!isPortalAuthorized && !isAdmin) {
     return (
@@ -728,6 +794,8 @@ export default function App() {
               <CalendarView 
                 reservations={reservations} 
                 closedDays={closedDays}
+                isAdmin={isAdmin}
+                onDeleteClick={handleCalendarDelete}
                 onReserveClick={(d) => {setPreSelectedDate(d); setActiveTab('reserve');}} 
               />
             )}
@@ -786,7 +854,7 @@ export default function App() {
   );
 }
 
-function CalendarView({ reservations, closedDays, onReserveClick }) {
+function CalendarView({ reservations, closedDays, isAdmin, onDeleteClick, onReserveClick }) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDateStr, setSelectedDateStr] = useState(formatDateStr(new Date()));
   
@@ -887,8 +955,17 @@ function CalendarView({ reservations, closedDays, onReserveClick }) {
             {selectedDayReservations.length > 0 ? (
               <div className="space-y-4">
                 {selectedDayReservations.sort((a,b)=>(a.startTime || "").localeCompare(b.startTime || "")).map(res => (
-                  <div key={res.id} className="border-l-8 border-blue-500 p-4 rounded-xl shadow bg-white transition-all hover:scale-[1.02]">
-                    <div className="text-base font-bold text-gray-900 mb-1 tracking-tight">{res.startTime || '--:--'} - {res.endTime || '--:--'}</div>
+                  <div 
+                    key={res.id} 
+                    onClick={() => onDeleteClick(res)}
+                    className="border-l-8 border-blue-500 p-4 rounded-xl shadow bg-white transition-all hover:scale-[1.02] cursor-pointer relative group"
+                  >
+                    <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-100 flex items-center shadow-sm transition-colors border border-red-200">
+                        <Trash2 className="w-3 h-3 mr-1" /> 取消
+                      </button>
+                    </div>
+                    <div className="text-base font-bold text-gray-900 mb-1 tracking-tight pr-16">{res.startTime || '--:--'} - {res.endTime || '--:--'}</div>
                     <div className="text-xs font-bold text-blue-700 my-1 bg-blue-50 px-2 py-0.5 rounded inline-block">
                       {res.place} {res.courts ? `(${Array.isArray(res.courts) ? res.courts.join(', ') : res.courts})` : ''}
                     </div>
@@ -982,17 +1059,24 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
   const partitionedDates = useMemo(() => {
     const valid = [];
     const closed = [];
+    const holidayExcluded = [];
+    
+    const isLateTime = formData.endTime > "17:00" || formData.startTime >= "17:00";
+
     targetDates.forEach(d => {
       if (closedDateStrs.includes(d)) {
         closed.push(d);
+      } else if (isRecurring && isLateTime && isWeekendOrHoliday(d)) {
+        holidayExcluded.push(d);
       } else {
         valid.push(d);
       }
     });
-    return { valid, closed };
-  }, [targetDates, closedDateStrs]);
+    return { valid, closed, holidayExcluded };
+  }, [targetDates, closedDateStrs, isRecurring, formData.startTime, formData.endTime]);
 
   const hasClosedDayInTargets = partitionedDates.closed.length > 0;
+  const hasHolidayExcludedInTargets = partitionedDates.holidayExcluded.length > 0;
 
   const getOccupiedCourts = (date) => {
     if (!date || !formData.startTime || !formData.endTime || !selectedFacilities.includes('体育館')) return [];
@@ -1035,7 +1119,7 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
     
     if (!isRecurring && isSelectedDateClosed) return alert("休館日のため予約できません。");
     if (isRecurring && partitionedDates.valid.length === 0) {
-      return alert("選択された期間の全ての日付が休館日のため、予約を送信できません。");
+      return alert("選択された期間の全ての日付が休館日または対象外のため、予約を送信できません。");
     }
 
     if (selectedFacilities.includes('体育館') && selectedCourts.length === 0) return alert("コート(A-F)を選んでください。");
@@ -1203,8 +1287,14 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
 
       setShowConfirmModal(false);
       let successMsg = '予約が完了しました。';
-      if (partitionedDates.closed.length > 0) {
-        successMsg = `一部の日程を除いて予約が完了しました。以下の休館日は除外されました：\n${partitionedDates.closed.join(', ')}`;
+      
+      const skippedReasons = [];
+      if (partitionedDates.closed.length > 0) skippedReasons.push('休館日');
+      if (partitionedDates.holidayExcluded.length > 0) skippedReasons.push('17時以降の土日祝');
+
+      if (skippedReasons.length > 0) {
+        const allSkippedDates = [...partitionedDates.closed, ...partitionedDates.holidayExcluded].sort();
+        successMsg = `一部の日程を除外して予約が完了しました。\n※除外された日程（${skippedReasons.join('・')}）：\n${allSkippedDates.join(', ')}`;
       }
       onSuccess(successMsg);
     } catch (err) { 
@@ -1331,6 +1421,11 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
                       <p className="text-amber-700 text-[10px] font-black flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> 休館日が含まれています（自動除外）</p>
                     </div>
                   )}
+                  {hasHolidayExcludedInTargets && (
+                    <div className="bg-amber-50 border border-amber-200 p-2 rounded-lg mt-2 space-y-1">
+                      <p className="text-amber-700 text-[10px] font-black flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> 17時以降のため土日・祝日を除外します</p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1450,7 +1545,7 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
           disabled={isSubmitting || (partitionedDates.valid.length === 0)} 
           className="w-full max-w-lg bg-blue-600 text-white py-5 rounded-[2rem] font-bold text-xl hover:bg-blue-700 transition-all shadow-xl active:scale-95 disabled:bg-gray-300 disabled:shadow-none disabled:cursor-not-allowed flex items-center justify-center"
         >
-          {(partitionedDates.valid.length === 0) ? '休館日のため予約不可' : '予約内容を確認する'}
+          {(partitionedDates.valid.length === 0) ? '予約可能な日程がありません' : '予約内容を確認する'}
         </button>
       </div>
     </form>
