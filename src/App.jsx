@@ -211,7 +211,6 @@ const isWeekendOrHoliday = (dateStr) => {
   return isHoliday(dateStr); // または祝日
 };
 
-
 // --- ペナルティ判定関数 ---
 const isPenaltyTarget = (res) => {
   const now = new Date();
@@ -312,7 +311,7 @@ function TimeGridSelector({ selectedDate, reservations, currentStartTime, curren
       });
     });
     return map;
-  }, [selectedDate, reservations]);
+  }, [selectedDate, reservations, isAdmin]);
 
   const dragRect = useMemo(() => {
     if (!isDragging || !dragStart || !dragCurrent) return null;
@@ -431,6 +430,200 @@ function TimeGridSelector({ selectedDate, reservations, currentStartTime, curren
   );
 }
 
+// --- 編集モーダルコンポーネント ---
+function EditReservationModal({ reservation, groups, allReservations, isAdmin, onClose, onSuccess }) {
+  const [startTime, setStartTime] = useState(reservation.startTime || '');
+  const [endTime, setEndTime] = useState(reservation.endTime || '');
+  
+  const initialFacilities = [];
+  if (reservation.place.includes('体育館')) initialFacilities.push('体育館');
+  if (reservation.place.includes('多目的室')) initialFacilities.push('多目的室');
+  const [facilities, setFacilities] = useState(initialFacilities);
+  
+  const [courts, setCourts] = useState(reservation.courts || []);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const occupiedCourts = useMemo(() => {
+    return allReservations
+      .filter(r => r.date === reservation.date && r.id !== reservation.id && r.status !== 'cancelled' && r.place.includes('体育館') && r.courts)
+      .filter(r => isTimeOverlapping(startTime, endTime, r.startTime, r.endTime))
+      .flatMap(r => Array.isArray(r.courts) ? r.courts : []);
+  }, [allReservations, reservation, startTime, endTime]);
+
+  const toggleFacility = (facility) => {
+    setFacilities(prev => 
+      prev.includes(facility) ? prev.filter(f => f !== facility) : [...prev, facility]
+    );
+    if (facility === '体育館' && facilities.includes('体育館')) {
+      setCourts([]);
+    }
+  };
+
+  const toggleCourt = (court) => {
+    if (occupiedCourts.includes(court)) return;
+    setCourts(prev => prev.includes(court) ? prev.filter(c => c !== court) : [...prev, court].sort());
+  };
+
+  const handleUpdate = async () => {
+    if (!startTime || !endTime) return alert("時間を指定してください。");
+    if (facilities.length === 0) return alert("利用する施設を選択してください。");
+    if (facilities.includes('体育館') && courts.length === 0) return alert("コートを選んでください。");
+    if (startTime >= endTime) return alert("終了時間は開始時間より後に設定してください。");
+
+    if (!isAdmin && isWeekendOrHoliday(reservation.date)) {
+      if (endTime > "17:00" || startTime >= "17:00") {
+        return alert(`土日・祝日のため、通常は17:00以降の予約に変更できません。`);
+      }
+    }
+
+    if (facilities.includes('体育館')) {
+      const conflict = courts.some(c => occupiedCourts.includes(c));
+      if (conflict) return alert(`指定のコートは既に予約されています。時間を変更してください。`);
+    }
+    if (facilities.includes('多目的室')) {
+      const roomConflict = allReservations.some(r => 
+        r.date === reservation.date && r.id !== reservation.id && r.place.includes('多目的室') && r.status !== 'cancelled' &&
+        isTimeOverlapping(startTime, endTime, r.startTime, r.endTime)
+      );
+      if (roomConflict) return alert(`多目的室は既に予約されています。時間を変更してください。`);
+    }
+
+    const groupData = groups.find(g => g.id === reservation.groupId);
+    if (!groupData) return alert("団体データが見つかりません");
+
+    const limitType = groupData.limitType || (groupData.isExemptFromLimit ? 'unlimited' : '20');
+    const isExempt = limitType === 'unlimited';
+    const limitMinutes = limitType === '30' ? 30 * 60 : 20 * 60;
+    const monthStr = reservation.date.substring(0, 7);
+
+    const newMinutes = calculateDurationMinutes(startTime, endTime);
+    const newSixCourts = facilities.includes('体育館') && courts.length === 6 ? 1 : 0;
+
+    let currentTotalMinutes = 0;
+    let currentSixCourtCount = 0;
+    
+    // キャンセル済と今回の対象予約以外を月間合計として集計
+    const existingResInMonth = allReservations.filter(r => r.groupId === reservation.groupId && r.date.startsWith(monthStr) && r.id !== reservation.id && r.status !== 'cancelled');
+    existingResInMonth.forEach(r => {
+      currentTotalMinutes += calculateDurationMinutes(r.startTime, r.endTime);
+      if (r.place.includes('体育館') && r.courts?.length === 6) currentSixCourtCount++;
+    });
+
+    let requiresAdminOverride = false;
+    let overrideMsgs = [];
+
+    if (!isExempt && currentTotalMinutes + newMinutes > limitMinutes) {
+      overrideMsgs.push(`月間予約上限（${limitMinutes/60}時間）を超過します。`);
+      requiresAdminOverride = true;
+    }
+    if (reservation.userType !== 'soumu' && newSixCourts && currentSixCourtCount + newSixCourts > 1) {
+      overrideMsgs.push(`全面(6面)予約の月間上限(1回)を超過します。`);
+      requiresAdminOverride = true;
+    }
+
+    if (requiresAdminOverride) {
+      if (isAdmin) {
+        if (!window.confirm("【管理者特権】\n" + overrideMsgs.join('\n') + "\n無視して変更しますか？")) return;
+      } else {
+        return alert("予約エラー：\n" + overrideMsgs.join('\n'));
+      }
+    }
+
+    setIsSubmitting(true);
+    try {
+      await updateDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', reservation.id), {
+        startTime,
+        endTime,
+        place: facilities.join(', '),
+        courts: facilities.includes('体育館') ? courts : null
+      });
+      onSuccess("予約内容を変更しました。");
+      onClose();
+    } catch(e) {
+      alert("変更に失敗しました。");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in">
+      <div className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto space-y-6">
+        <div className="flex justify-between items-start">
+          <div>
+            <h3 className="text-xl font-black text-blue-900 flex items-center"><Edit2 className="w-5 h-5 mr-2 text-blue-500"/> 予約内容の変更</h3>
+            <p className="text-sm font-bold text-gray-500 mt-1">{reservation.name}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 bg-gray-100 p-2 rounded-full"><X className="w-5 h-5"/></button>
+        </div>
+        
+        <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 text-sm font-bold text-blue-800">
+          対象日: {reservation.date}
+        </div>
+
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">開始時間</label>
+              <input type="time" step="600" value={startTime} onChange={e=>setStartTime(e.target.value)} className="bg-gray-50 p-3 rounded-xl w-full text-center text-lg font-bold border-2 border-transparent focus:border-blue-500 outline-none" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">終了時間</label>
+              <input type="time" step="600" value={endTime} onChange={e=>setEndTime(e.target.value)} className="bg-gray-50 p-3 rounded-xl w-full text-center text-lg font-bold border-2 border-transparent focus:border-blue-500 outline-none" />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest px-1">利用施設</label>
+            <div className="flex gap-4">
+              {['体育館', '多目的室'].map(facility => (
+                <label key={facility} className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all cursor-pointer font-bold text-sm ${facilities.includes(facility) ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-100 bg-gray-50 text-gray-400'}`}>
+                  <input type="checkbox" checked={facilities.includes(facility)} onChange={() => toggleFacility(facility)} className="hidden" />
+                  {facilities.includes(facility) ? <CheckSquare className="h-4 w-4" /> : <div className="h-4 w-4 border-2 border-gray-200 rounded" />}
+                  {facility}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {facilities.includes('体育館') && (
+            <div className="space-y-3 p-4 bg-gray-100 rounded-2xl">
+              <label className="text-xs font-bold text-blue-800 flex justify-between">
+                <span>コート選択 <span className="text-[10px] font-normal text-blue-500 ml-2">※全面(6面)予約は月1回まで</span></span>
+                <span className="text-[10px] bg-blue-100 px-2 py-0.5 rounded-full">選択中: {courts.length}/6</span>
+              </label>
+              <div className="space-y-3">
+                <p className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">用具側</p>
+                <div className="flex space-x-3 justify-center">
+                  {['A', 'B', 'C'].map(c => (
+                    <CourtButton key={c} label={c} active={courts.includes(c)} occupied={occupiedCourts.includes(c)} onClick={() => toggleCourt(c)} />
+                  ))}
+                </div>
+              </div>
+              <div className="my-1 border-b border-gray-200 w-2/3 mx-auto"></div>
+              <div className="space-y-3">
+                <p className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">入口側</p>
+                <div className="flex space-x-3 justify-center">
+                  {['D', 'E', 'F'].map(c => (
+                    <CourtButton key={c} label={c} active={courts.includes(c)} occupied={occupiedCourts.includes(c)} onClick={() => toggleCourt(c)} />
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-3 pt-4">
+          <button onClick={onClose} disabled={isSubmitting} className="flex-1 py-3 font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors">キャンセル</button>
+          <button onClick={handleUpdate} disabled={isSubmitting} className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 shadow-md flex items-center justify-center">
+            {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : '変更を保存する'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // --- メインコンポーネント ---
 export default function App() {
   // ★ ポータルのアクセス制限状態
@@ -455,6 +648,9 @@ export default function App() {
   const [announcementText, setAnnouncementText] = useState(''); // お知らせテキスト
   const [penaltySettings, setPenaltySettings] = useState({ secondPenaltyDays: 30 });
   const [isLoading, setIsLoading] = useState(true);
+
+  // 予約編集用の状態
+  const [editingReservation, setEditingReservation] = useState(null);
 
   // Firestore listeners
   useEffect(() => {
@@ -689,6 +885,17 @@ export default function App() {
     }
   };
 
+  const handleCalendarEdit = (targetRes) => {
+    if (!isAdmin) {
+      const inputPass = window.prompt(`【${targetRes.name}】の予約内容を変更します。\n予約時に設定した「取消用パスワード」を入力してください：`);
+      if (inputPass === null) return;
+      if (inputPass !== targetRes.deletePass) {
+        return alert("パスワードが正しくありません。");
+      }
+    }
+    setEditingReservation(targetRes);
+  };
+
   // ★ 共通アクセス認証画面
   if (!isPortalAuthorized && !isAdmin) {
     return (
@@ -795,6 +1002,7 @@ export default function App() {
                 reservations={reservations} 
                 closedDays={closedDays}
                 isAdmin={isAdmin}
+                onEditClick={handleCalendarEdit}
                 onDeleteClick={handleCalendarDelete}
                 onReserveClick={(d) => {setPreSelectedDate(d); setActiveTab('reserve');}} 
               />
@@ -827,6 +1035,18 @@ export default function App() {
         )}
       </main>
 
+      {/* 予約編集モーダル */}
+      {editingReservation && (
+        <EditReservationModal 
+          reservation={editingReservation}
+          groups={groups}
+          allReservations={reservations}
+          isAdmin={isAdmin}
+          onClose={() => setEditingReservation(null)}
+          onSuccess={(msg) => { showToast(msg); setEditingReservation(null); }}
+        />
+      )}
+
       {/* アプリ内からの管理者ログイン呼び出し用モーダル（ハッシュ対応用） */}
       {showLoginModal && !isAdmin && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm print:hidden">
@@ -854,7 +1074,7 @@ export default function App() {
   );
 }
 
-function CalendarView({ reservations, closedDays, isAdmin, onDeleteClick, onReserveClick }) {
+function CalendarView({ reservations, closedDays, isAdmin, onEditClick, onDeleteClick, onReserveClick }) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDateStr, setSelectedDateStr] = useState(formatDateStr(new Date()));
   
@@ -957,15 +1177,17 @@ function CalendarView({ reservations, closedDays, isAdmin, onDeleteClick, onRese
                 {selectedDayReservations.sort((a,b)=>(a.startTime || "").localeCompare(b.startTime || "")).map(res => (
                   <div 
                     key={res.id} 
-                    onClick={() => onDeleteClick(res)}
-                    className="border-l-8 border-blue-500 p-4 rounded-xl shadow bg-white transition-all hover:scale-[1.02] cursor-pointer relative group"
+                    className="border-l-8 border-blue-500 p-4 rounded-xl shadow bg-white transition-all hover:scale-[1.02] relative group cursor-pointer"
                   >
-                    <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-100 flex items-center shadow-sm transition-colors border border-red-200">
+                    <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                      <button onClick={(e) => { e.stopPropagation(); onEditClick(res); }} className="bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-100 flex items-center shadow-sm transition-colors border border-blue-200">
+                        <Edit2 className="w-3 h-3 mr-1" /> 変更
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); onDeleteClick(res); }} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-100 flex items-center shadow-sm transition-colors border border-red-200">
                         <Trash2 className="w-3 h-3 mr-1" /> 取消
                       </button>
                     </div>
-                    <div className="text-base font-bold text-gray-900 mb-1 tracking-tight pr-16">{res.startTime || '--:--'} - {res.endTime || '--:--'}</div>
+                    <div className="text-base font-bold text-gray-900 mb-1 tracking-tight pr-28">{res.startTime || '--:--'} - {res.endTime || '--:--'}</div>
                     <div className="text-xs font-bold text-blue-700 my-1 bg-blue-50 px-2 py-0.5 rounded inline-block">
                       {res.place} {res.courts ? `(${Array.isArray(res.courts) ? res.courts.join(', ') : res.courts})` : ''}
                     </div>
@@ -1381,7 +1603,7 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
               <InputField label="使用人数 *" type="number" value={formData.userCount} onChange={(v)=>setFormData({...formData, userCount:v})} placeholder="名" />
               <InputField label="取消用パスワード *" type="password" value={formData.deletePass} onChange={(v)=>setFormData({...formData, deletePass:v})} placeholder="数字4桁など" />
             </div>
-            <p className="text-[9px] text-gray-400 font-bold px-2">※取消用パスワードは、後でこの予約をキャンセルする際に必要になります。</p>
+            <p className="text-[9px] text-gray-400 font-bold px-2">※取消用パスワードは、後でこの予約をキャンセル・変更する際に必要になります。</p>
           </div>
         </div>
 
