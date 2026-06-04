@@ -18,7 +18,7 @@ export default function middleware(request) {
     userRecord.count++; // アクセス回数を1増やす
     
     // 1分間に「15回」以上アクセスしてきたら、攻撃とみなして弾く
-    if (userRecord.count > 15) {
+    if (userRecord.count > 30) {
       return new Response('アクセスが多すぎます。しばらく待ってからやり直してください。', {
         status: 429,
         headers: { 'Content-Type': 'text/plain; charset=utf-8' }
