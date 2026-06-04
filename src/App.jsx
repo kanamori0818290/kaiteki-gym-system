@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban, AlertOctagon, Edit2, RotateCcw, Filter, Unlock, BarChart3, Megaphone, MessageSquare } from 'lucide-react';
+import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban, Mail, Key, UserCheck, MousePointerClick, RotateCcw, Filter, Unlock, BarChart3, Megaphone, MessageSquare, AlertOctagon, Settings, Edit2 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, writeBatch, setDoc } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, query, writeBatch, setDoc } from 'firebase/firestore';
 
 // --- Firebase 設定 ---
 const firebaseConfig = {
@@ -147,15 +147,15 @@ const generateHolidaysForYear = (year) => {
   const autumnEquinox = getAutumnEquinox(year);
   add(9, autumnEquinox);
   
-  // ハッピーマンデー (第N月曜日)
+  // ハッピーマンデー
   const adultDay = getNthMonday(year, 1, 2);
-  add(adultDay.getMonth() + 1, adultDay.getDate()); // 成人の日
+  add(adultDay.getMonth() + 1, adultDay.getDate());
   const marineDay = getNthMonday(year, 7, 3);
-  add(marineDay.getMonth() + 1, marineDay.getDate()); // 海の日
+  add(marineDay.getMonth() + 1, marineDay.getDate());
   const keiroDay = getNthMonday(year, 9, 3);
-  add(keiroDay.getMonth() + 1, keiroDay.getDate()); // 敬老の日
+  add(keiroDay.getMonth() + 1, keiroDay.getDate());
   const sportsDay = getNthMonday(year, 10, 2);
-  add(sportsDay.getMonth() + 1, sportsDay.getDate()); // スポーツの日
+  add(sportsDay.getMonth() + 1, sportsDay.getDate());
 
   hols.sort();
   const finalHols = new Set(hols);
@@ -176,7 +176,7 @@ const generateHolidaysForYear = (year) => {
     }
   });
 
-  // 国民の休日 (祝日に挟まれた平日: 主に敬老の日と秋分の日の間)
+  // 国民の休日
   const keiroDate = keiroDay.getDate();
   if (autumnEquinox - keiroDate === 2) {
     const natHol = new Date(year, 8, keiroDate + 1);
@@ -186,7 +186,6 @@ const generateHolidaysForYear = (year) => {
   return Array.from(finalHols).sort();
 };
 
-// 計算結果のキャッシュ
 const getHolidaysMemoized = (() => {
   const cache = {};
   return (year) => {
@@ -210,7 +209,6 @@ const isWeekendOrHoliday = (dateStr) => {
   return isHoliday(dateStr); // または祝日
 };
 
-
 // --- ペナルティ判定関数 ---
 const isPenaltyTarget = (res) => {
   const now = new Date();
@@ -228,7 +226,6 @@ const isPenaltyTarget = (res) => {
   const diffDays = Math.floor((resDateZero - todayZero) / 86400000);
   
   // diffDays: 0(当日), 負の値(無断等、すでに時間が過ぎている)
-  // 当日・無断キャンセルのみペナルティ対象
   return diffDays <= 0;
 };
 
@@ -293,7 +290,6 @@ function TimeGridSelector({ selectedDate, reservations, currentStartTime, curren
         const start = t;
         const end = END_TIMES[cIndex];
 
-        // 土日祝の17:00以降はシステム的に予約不可（管理者は除く）
         if (!isAdmin && isHolidayOrWeekend && start >= "17:00") {
            map[`${rIndex}-${cIndex}`] = true;
            return;
@@ -502,7 +498,6 @@ function EditReservationModal({ reservation, groups, allReservations, isAdmin, o
     let currentTotalMinutes = 0;
     let currentSixCourtCount = 0;
     
-    // キャンセル済と今回の対象予約以外を月間合計として集計
     const existingResInMonth = allReservations.filter(r => r.groupId === reservation.groupId && r.date.startsWith(monthStr) && r.id !== reservation.id && r.status !== 'cancelled');
     existingResInMonth.forEach(r => {
       currentTotalMinutes += calculateDurationMinutes(r.startTime, r.endTime);
@@ -538,6 +533,7 @@ function EditReservationModal({ reservation, groups, allReservations, isAdmin, o
         courts: facilities.includes('体育館') ? courts : null
       });
       onSuccess("予約内容を変更しました。");
+      onClose();
     } catch(e) {
       alert("変更に失敗しました。");
     } finally {
@@ -1178,10 +1174,10 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
   }, [authIdInput, groups]);
 
   const maxRecurringCount = useMemo(() => {
-    if (userType === 'mcc') return 53;
-    if (userType === 'soumu') return 53;
-    if (userType === 'employee') return 15;
-    if (userType === 'external') return 10;
+    if (userType === 'mcc') return 53; 
+    if (userType === 'soumu') return 53; 
+    if (userType === 'employee') return 15; 
+    if (userType === 'external') return 10; 
     return 10; 
   }, [userType]);
 
@@ -1689,6 +1685,7 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
       </div>
     </form>
 
+    {/* --- 予約確認モーダル --- */}
     {showConfirmModal && (
       <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in">
         <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md space-y-6">
@@ -1748,6 +1745,8 @@ function CancelView({ reservations, groups, penaltySettings, isAdmin, onSuccess 
   const [authIdInput, setAuthIdInput] = useState('');
   const [targetGroup, setTargetGroup] = useState(null);
   const [inputDeletePass, setInputDeletePass] = useState('');
+  
+  // 免除申請用
   const [isExemptChecked, setIsExemptChecked] = useState(false);
 
   const handleSearch = (e) => {
@@ -1755,7 +1754,7 @@ function CancelView({ reservations, groups, penaltySettings, isAdmin, onSuccess 
     const g = groups.find(group => group.authId === authIdInput.trim());
     if (g) {
       setTargetGroup(g);
-      setIsExemptChecked(false);
+      setIsExemptChecked(false); // 検索のたびにリセット
     } else {
       setTargetGroup(null);
       alert("該当する団体が見つかりません。IDを確認してください。");
@@ -1764,17 +1763,20 @@ function CancelView({ reservations, groups, penaltySettings, isAdmin, onSuccess 
 
   const filteredResults = useMemo(() => {
     if (!targetGroup) return [];
-    return reservations.filter(res => res.status !== 'cancelled' && res.groupId === targetGroup.id);
+    return reservations.filter(res => 
+      res.status !== 'cancelled' && res.groupId === targetGroup.id
+    );
   }, [reservations, targetGroup]);
 
   const handleCancel = async (targetRes) => {
     if (!inputDeletePass) return alert("取消用パスワードを入力してください。");
     if (targetRes.deletePass !== inputDeletePass) return alert("パスワードが正しくありません。");
 
+    // ペナルティ判定
     const willPenalty = isPenaltyTarget(targetRes);
     
     if (willPenalty && !isExemptChecked) {
-      const confirmMsg = "【警告：ペナルティ対象のキャンセルです】\n\nこのキャンセルは当日・無断キャンセルのため、ペナルティ（予約停止）の対象となります。\n" +
+      const confirmMsg = "【警告：ペナルティ対象のキャンセルです】\n\nこのキャンセルは前日・当日キャンセルのため、ペナルティ（予約停止）の対象となります。\n" +
         (isAdmin ? "※災害・大雪などのやむを得ない理由の場合は、キャンセル画面の「免除を申告する」にチェックを入れてください。\n\n" : "\n") +
         "本当にキャンセルを実行しますか？";
       if (!window.confirm(confirmMsg)) return;
@@ -1784,31 +1786,44 @@ function CancelView({ reservations, groups, penaltySettings, isAdmin, onSuccess 
 
     try {
       const batch = writeBatch(db);
+      
+      // 予約ステータスの更新
       const resRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', targetRes.id);
       batch.update(resRef, { 
         status: 'cancelled',
         cancelReason: isExemptChecked ? '災害等による特例免除' : '自己都合'
       });
 
+      // ペナルティカウントの加算 (ペナルティ対象 ＆ 免除チェックなし の場合のみ)
       if (willPenalty && !isExemptChecked) {
         const groupRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'groups', targetGroup.id);
         const currentCount = targetGroup.penaltyCount || 0;
         const newCount = currentCount + 1;
-        let pDays = newCount === 1 ? 0 : (penaltySettings.secondPenaltyDays || 30);
+        
+        let pDays = 0;
+        if (newCount === 1) pDays = 0; // 初回は記録のみ
+        else pDays = penaltySettings.secondPenaltyDays || 30;
+
         let pUntil = targetGroup.penaltyUntil;
         if (pDays > 0) {
           const untilDate = new Date();
           untilDate.setDate(untilDate.getDate() + pDays);
           pUntil = untilDate.toISOString();
         }
-        batch.update(groupRef, { penaltyCount: newCount, penaltyUntil: pUntil });
+
+        batch.update(groupRef, {
+          penaltyCount: newCount,
+          penaltyUntil: pUntil
+        });
       }
 
       await batch.commit();
       onSuccess();
       setInputDeletePass('');
       setIsExemptChecked(false);
-    } catch (err) { alert("削除に失敗しました。"); }
+    } catch (err) {
+      alert("削除に失敗しました。");
+    }
   };
 
   return (
@@ -1849,13 +1864,14 @@ function CancelView({ reservations, groups, penaltySettings, isAdmin, onSuccess 
                   <Key className="h-5 w-5 text-red-500 flex-shrink-0" />
                   <input type="password" placeholder="取消用パスワードを入力" value={inputDeletePass} onChange={(e) => setInputDeletePass(e.target.value)} className="bg-white border-2 border-red-200 rounded-xl px-4 py-3 flex-1 text-sm font-bold outline-none focus:border-red-500 shadow-inner" />
                 </div>
+                
                 {isAdmin && (
                   <div className="pt-3 border-t border-red-100">
                     <label className="flex items-start gap-3 cursor-pointer p-2 hover:bg-red-100 rounded-lg transition-colors">
                       <input type="checkbox" checked={isExemptChecked} onChange={(e) => setIsExemptChecked(e.target.checked)} className="mt-1 w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500" />
                       <div>
                         <span className="text-sm font-black text-red-800 block">災害・大雪などによる特例免除として申告する（管理者専用）</span>
-                        <span className="text-[10px] font-bold text-red-600 block mt-1 leading-relaxed">※当日・無断キャンセルでもペナルティが免除されます。</span>
+                        <span className="text-[10px] font-bold text-red-600 block mt-1 leading-relaxed">※前日・当日のキャンセルでもペナルティが免除されます。不正防止のため管理者へ記録が残ります。</span>
                       </div>
                     </label>
                   </div>
@@ -2012,6 +2028,7 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
   
   const [editAnnouncementText, setEditAnnouncementText] = useState('');
   
+  // ペナルティ設定用ステート
   const [editPenaltySettings, setEditPenaltySettings] = useState({ secondPenaltyDays: 30 });
 
   const [groupSearchTerm, setGroupSearchTerm] = useState('');
@@ -2774,6 +2791,12 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                               const end = END_TIMES[cIndex];
                               const isLastSlot = cIndex === TIME_SLOTS.length - 1;
 
+                              if (isClosed) {
+                                cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''} bg-gray-200/50 bg-[repeating-linear-gradient(45deg,transparent,transparent_2px,rgba(0,0,0,0.1)_2px,rgba(0,0,0,0.1)_4px)]`}></td>);
+                                cIndex++;
+                                continue;
+                              }
+
                               const matchingRes = reservations.find(r => {
                                 if (r.date !== d || r.status === 'cancelled') return false;
                                 if (!isTimeOverlapping(start, end, r.startTime, r.endTime)) return false;
@@ -2818,7 +2841,7 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                               } else {
                                 const isRestricted = isWeekendOrHoliday(d) && start >= "17:00";
                                 if (isClosed || isRestricted) {
-                                  cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''} bg-[repeating-linear-gradient(45deg,rgba(0,0,0,0.05),rgba(0,0,0,0.05)_4px,rgba(0,0,0,0.1)_4px,rgba(0,0,0,0.1)_8px)]`}></td>);
+                                  cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''} bg-gray-300/60 bg-[repeating-linear-gradient(45deg,transparent,transparent_2px,rgba(0,0,0,0.1)_2px,rgba(0,0,0,0.1)_4px)]`}></td>);
                                 } else {
                                   cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''}`}></td>);
                                 }
@@ -2851,6 +2874,7 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
   );
 }
 
+// --- 月間予定表プレビュー（タイムライン形式に修正） ---
 function MonthlyPrintView({ reservations, closedDays, monthStr, onBack }) {
   const [yearStr, mStr] = monthStr.split('-');
   const year = parseInt(yearStr);
@@ -2946,6 +2970,12 @@ function MonthlyPrintView({ reservations, closedDays, monthStr, onBack }) {
                               const end = END_TIMES[cIndex];
                               const isLastSlot = cIndex === TIME_SLOTS.length - 1;
 
+                              if (isClosed) {
+                                cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''} bg-gray-200/50 bg-[repeating-linear-gradient(45deg,transparent,transparent_2px,rgba(0,0,0,0.1)_2px,rgba(0,0,0,0.1)_4px)]`}></td>);
+                                cIndex++;
+                                continue;
+                              }
+
                               const matchingRes = reservations.find(r => {
                                 if (r.date !== d || r.status === 'cancelled') return false;
                                 if (!isTimeOverlapping(start, end, r.startTime, r.endTime)) return false;
@@ -2990,7 +3020,7 @@ function MonthlyPrintView({ reservations, closedDays, monthStr, onBack }) {
                               } else {
                                 const isRestricted = isWeekendOrHoliday(d) && start >= "17:00";
                                 if (isClosed || isRestricted) {
-                                  cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''} bg-[repeating-linear-gradient(45deg,rgba(0,0,0,0.05),rgba(0,0,0,0.05)_4px,rgba(0,0,0,0.1)_4px,rgba(0,0,0,0.1)_8px)]`}></td>);
+                                  cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''} bg-gray-300/60 bg-[repeating-linear-gradient(45deg,transparent,transparent_2px,rgba(0,0,0,0.1)_2px,rgba(0,0,0,0.1)_4px)]`}></td>);
                                 } else {
                                   cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''}`}></td>);
                                 }
@@ -3082,10 +3112,10 @@ function RulesView() {
               </p>
               <div className="bg-white p-4 rounded-2xl border border-red-100 text-xs font-bold text-gray-700 space-y-2">
                 <div className="text-red-600 font-black mb-1 border-b border-red-100 pb-1">■ ペナルティ対象</div>
-                <p>・当日キャンセル・無断キャンセル</p>
+                <p>・前日、当日、無断でのキャンセル</p>
                 <p className="text-[10px] text-gray-500 leading-relaxed mt-1">
-                  ※前日までのキャンセルはペナルティ対象外です。<br/>
-                  ※当日・無断キャンセルであっても、予約後1時間以内の取り消しであれば、間違い防止のためペナルティは課されません。
+                  ※2日前までのキャンセルはペナルティ対象外です。<br/>
+                  ※前日以降のキャンセルであっても、予約後1時間以内の取り消しであれば、間違い防止のためペナルティは課されません。
                 </p>
               </div>
               <div className="bg-white p-4 rounded-2xl border border-red-100 text-xs font-bold text-gray-700 space-y-2">
