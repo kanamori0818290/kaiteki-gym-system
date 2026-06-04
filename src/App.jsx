@@ -643,64 +643,51 @@ export default function App() {
 
   const [editingReservation, setEditingReservation] = useState(null);
 
+  // ★ パスワード総当たり対策用のステート
+  const [loginAttempts, setLoginAttempts] = useState(0);
+  const [lockoutUntil, setLockoutUntil] = useState(null);
+  const [remainingLockTime, setRemainingLockTime] = useState(0);
+
+  const MAX_ATTEMPTS = 5; // ロックまでの最大失敗回数
+  const LOCKOUT_DURATION = 5 * 60 * 1000; // 5分間 (ミリ秒)
+
+  // 初期化時に localStorage を確認してロック状態を復元
   useEffect(() => {
-    if (!user || (!isAdmin && !isPortalAuthorized)) {
-        setIsLoading(false);
-        return;
+    const storedAttempts = parseInt(localStorage.getItem('gym_login_attempts') || '0', 10);
+    const storedLockout = parseInt(localStorage.getItem('gym_lockout_until') || '0', 10);
+    
+    setLoginAttempts(storedAttempts);
+    if (storedLockout > Date.now()) {
+      setLockoutUntil(storedLockout);
+    } else if (storedLockout !== 0) {
+      localStorage.removeItem('gym_login_attempts');
+      localStorage.removeItem('gym_lockout_until');
+      setLoginAttempts(0);
+      setLockoutUntil(null);
     }
-    setIsLoading(true);
+  }, []);
 
-    const resRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'reservations');
-    const unsubRes = onSnapshot(resRef, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setReservations(data);
-      setIsLoading(false);
-    }, (err) => { setIsLoading(false); });
-
-    const closedRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'closed_days');
-    const unsubClosed = onSnapshot(closedRef, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setClosedDays(data);
-    });
-
-    const groupsRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'groups');
-    const unsubGroups = onSnapshot(groupsRef, (snapshot) => {
-      if (snapshot.empty) {
-        if (isAdmin) {
-          const batch = writeBatch(db);
-          INITIAL_GROUPS.forEach(g => {
-            const docRef = doc(groupsRef);
-            batch.set(docRef, { ...g, createdAt: new Date().toISOString() });
-          });
-          batch.commit();
+  // ロック中のカウントダウン処理
+  useEffect(() => {
+    let timer;
+    if (lockoutUntil && lockoutUntil > Date.now()) {
+      setRemainingLockTime(Math.ceil((lockoutUntil - Date.now()) / 1000));
+      timer = setInterval(() => {
+        const remaining = Math.ceil((lockoutUntil - Date.now()) / 1000);
+        if (remaining <= 0) {
+          clearInterval(timer);
+          setLockoutUntil(null);
+          setLoginAttempts(0);
+          localStorage.removeItem('gym_login_attempts');
+          localStorage.removeItem('gym_lockout_until');
+          setRemainingLockTime(0);
+        } else {
+          setRemainingLockTime(remaining);
         }
-      } else {
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setGroups(data.sort((a,b) => a.name.localeCompare(b.name, 'ja')));
-      }
-    });
-
-    const reportsRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'reports');
-    const unsubReports = onSnapshot(reportsRef, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setReports(data);
-    });
-
-    const announceRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'system_messages', 'announcement');
-    const unsubAnnounce = onSnapshot(announceRef, (docSnap) => {
-      if (docSnap.exists()) setAnnouncementText(docSnap.data().text || '');
-      else setAnnouncementText('');
-    });
-
-    const penSettingsRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'settings', 'penalty');
-    const unsubPenSettings = onSnapshot(penSettingsRef, (docSnap) => {
-      if (docSnap.exists()) setPenaltySettings({ secondPenaltyDays: docSnap.data().secondPenaltyDays || 30 });
-    });
-
-    return () => {
-      unsubRes(); unsubClosed(); unsubGroups(); unsubReports(); unsubAnnounce(); unsubPenSettings();
-    };
-  }, [user, isAdmin, isPortalAuthorized]);
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [lockoutUntil]);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -736,9 +723,31 @@ export default function App() {
 
   const handlePortalLogin = (e) => {
     e.preventDefault();
+    if (lockoutUntil && lockoutUntil > Date.now()) {
+      return; // ロック中は処理しない
+    }
+
     const input = e.target.portalPass.value;
-    if (input === PORTAL_PASSWORD) setIsPortalAuthorized(true);
-    else alert("パスワードが正しくありません。");
+    if (input === PORTAL_PASSWORD) {
+      setIsPortalAuthorized(true);
+      setLoginAttempts(0);
+      setLockoutUntil(null);
+      localStorage.removeItem('gym_login_attempts');
+      localStorage.removeItem('gym_lockout_until');
+    } else {
+      const newAttempts = loginAttempts + 1;
+      setLoginAttempts(newAttempts);
+      localStorage.setItem('gym_login_attempts', newAttempts);
+
+      if (newAttempts >= MAX_ATTEMPTS) {
+        const lockoutTime = Date.now() + LOCKOUT_DURATION;
+        setLockoutUntil(lockoutTime);
+        localStorage.setItem('gym_lockout_until', lockoutTime);
+        alert(`パスワードを${MAX_ATTEMPTS}回間違えたため、5分間ロックされました。`);
+      } else {
+        alert(`パスワードが正しくありません。（あと${MAX_ATTEMPTS - newAttempts}回間違えるとロックされます）`);
+      }
+    }
   };
 
   const handleAdminLogin = async (e) => {
@@ -825,34 +834,51 @@ export default function App() {
   };
 
   if (!isPortalAuthorized && !isAdmin) {
+    const isLocked = lockoutUntil && lockoutUntil > Date.now();
     return (
       <div className="min-h-screen bg-blue-900 flex items-center justify-center p-4 relative">
         <div className="bg-white p-10 rounded-[3rem] shadow-2xl w-full max-w-md text-center space-y-8 animate-in zoom-in duration-500 z-10">
           <div className="flex justify-center">
-            <div className="bg-blue-100 p-4 rounded-3xl text-blue-700">
-              <KeyRound className="h-12 w-12" />
+            <div className={`p-4 rounded-3xl ${isLocked ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
+              {isLocked ? <Lock className="h-12 w-12" /> : <KeyRound className="h-12 w-12" />}
             </div>
           </div>
           <div className="space-y-2">
             <h1 className="text-3xl font-black text-blue-950">KAITEKIケミカル体育館</h1>
             <p className="text-gray-500 font-bold">予約システム アクセス認証</p>
           </div>
-          <form onSubmit={handlePortalLogin} className="space-y-6">
-            <div className="space-y-2">
-              <label className="text-xs font-black text-gray-400 uppercase tracking-widest block text-left px-4">利用パスワード</label>
-              <input 
-                name="portalPass"
-                type="password" 
-                required 
-                autoFocus
-                className="w-full bg-gray-50 border-4 border-transparent focus:border-blue-500 focus:bg-white p-5 rounded-[2rem] text-center text-2xl tracking-[0.3em] outline-none transition-all shadow-inner" 
-                placeholder="••••••" 
-              />
-            </div>
-            <button type="submit" className="w-full bg-blue-600 text-white py-5 rounded-[2rem] font-black text-xl hover:bg-blue-700 shadow-xl transition-all active:scale-95">
-              システムに入る
-            </button>
-          </form>
+          
+          {isLocked ? (
+             <div className="bg-red-50 p-6 rounded-2xl border-2 border-red-200 space-y-3 animate-in fade-in">
+               <p className="font-bold text-red-800 text-sm flex items-center justify-center"><AlertTriangle className="w-4 h-4 mr-2" /> セキュリティロック中</p>
+               <div className="text-4xl font-black text-red-600 font-mono tracking-widest bg-white py-3 rounded-xl border border-red-100 shadow-inner">
+                  {Math.floor(remainingLockTime / 60).toString().padStart(2, '0')}:{(remainingLockTime % 60).toString().padStart(2, '0')}
+               </div>
+               <p className="text-xs text-red-500 font-bold leading-relaxed">規定回数パスワードを間違えたため<br/>一時的にアクセスを制限しています</p>
+             </div>
+          ) : (
+            <form onSubmit={handlePortalLogin} className="space-y-6">
+              <div className="space-y-2">
+                <label className="text-xs font-black text-gray-400 uppercase tracking-widest block text-left px-4">利用パスワード</label>
+                <input 
+                  name="portalPass"
+                  type="password" 
+                  required 
+                  autoFocus
+                  className="w-full bg-gray-50 border-4 border-transparent focus:border-blue-500 focus:bg-white p-5 rounded-[2rem] text-center text-2xl tracking-[0.3em] outline-none transition-all shadow-inner" 
+                  placeholder="••••••" 
+                />
+              </div>
+              {loginAttempts > 0 && (
+                <p className="text-xs font-bold text-red-500 text-left px-4 animate-pulse">
+                  ※ あと {MAX_ATTEMPTS - loginAttempts} 回間違えるとロックされます
+                </p>
+              )}
+              <button type="submit" className="w-full bg-blue-600 text-white py-5 rounded-[2rem] font-black text-xl hover:bg-blue-700 shadow-xl transition-all active:scale-95">
+                システムに入る
+              </button>
+            </form>
+          )}
         </div>
         
         {showLoginModal && (
