@@ -653,21 +653,75 @@ export default function App() {
 
   // 初期化時に localStorage を確認してロック状態を復元
   useEffect(() => {
-    const storedAttempts = parseInt(localStorage.getItem('gym_login_attempts') || '0', 10);
-    const storedLockout = parseInt(localStorage.getItem('gym_lockout_until') || '0', 10);
-    
-    setLoginAttempts(storedAttempts);
-    if (storedLockout > Date.now()) {
-      setLockoutUntil(storedLockout);
-    } else if (storedLockout !== 0) {
-      localStorage.removeItem('gym_login_attempts');
-      localStorage.removeItem('gym_lockout_until');
-      setLoginAttempts(0);
-      setLockoutUntil(null);
+    if (!user || (!isAdmin && !isPortalAuthorized)) {
+        setIsLoading(false);
+        return;
     }
-  }, []);
+    setIsLoading(true);
 
-  // ロック中のカウントダウン処理
+    // データ読み込みがスタックした際の安全装置（5秒で強制解除）
+    const fallbackTimer = setTimeout(() => {
+      setIsLoading(false);
+    }, 5000);
+
+    const resRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'reservations');
+    const unsubRes = onSnapshot(resRef, (snapshot) => {
+      clearTimeout(fallbackTimer);
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setReservations(data);
+      setIsLoading(false);
+    }, (err) => { 
+      clearTimeout(fallbackTimer);
+      console.error("Firebase Error:", err);
+      setIsLoading(false); 
+    });
+
+    const closedRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'closed_days');
+    const unsubClosed = onSnapshot(closedRef, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setClosedDays(data);
+    }, (err) => console.error(err));
+
+    const groupsRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'groups');
+    const unsubGroups = onSnapshot(groupsRef, (snapshot) => {
+      if (snapshot.empty) {
+        if (isAdmin) {
+          const batch = writeBatch(db);
+          INITIAL_GROUPS.forEach(g => {
+            const docRef = doc(groupsRef);
+            batch.set(docRef, { ...g, createdAt: new Date().toISOString() });
+          });
+          batch.commit().catch(err => console.error(err));
+        }
+      } else {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setGroups(data.sort((a,b) => a.name.localeCompare(b.name, 'ja')));
+      }
+    }, (err) => console.error(err));
+
+    const reportsRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'reports');
+    const unsubReports = onSnapshot(reportsRef, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setReports(data);
+    }, (err) => console.error(err));
+
+    const announceRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'system_messages', 'announcement');
+    const unsubAnnounce = onSnapshot(announceRef, (docSnap) => {
+      if (docSnap.exists()) setAnnouncementText(docSnap.data().text || '');
+      else setAnnouncementText('');
+    }, (err) => console.error(err));
+
+    const penSettingsRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'settings', 'penalty');
+    const unsubPenSettings = onSnapshot(penSettingsRef, (docSnap) => {
+      if (docSnap.exists()) setPenaltySettings({ secondPenaltyDays: docSnap.data().secondPenaltyDays || 30 });
+    }, (err) => console.error(err));
+
+    return () => {
+      clearTimeout(fallbackTimer);
+      unsubRes(); unsubClosed(); unsubGroups(); unsubReports(); unsubAnnounce(); unsubPenSettings();
+    };
+  }, [user, isAdmin, isPortalAuthorized]);
+
   useEffect(() => {
     let timer;
     if (lockoutUntil && lockoutUntil > Date.now()) {
