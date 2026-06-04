@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban, Mail, Key, UserCheck, MousePointerClick, RotateCcw, Filter, Unlock, BarChart3, Megaphone, MessageSquare, AlertOctagon, Settings, Edit2 } from 'lucide-react';
+import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban, AlertOctagon, Edit2, RotateCcw, Filter, Unlock, BarChart3, Megaphone, MessageSquare } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, query, writeBatch, setDoc } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, writeBatch, setDoc } from 'firebase/firestore';
 
 // --- Firebase 設定 ---
 const firebaseConfig = {
@@ -21,9 +21,8 @@ const db = getFirestore(app);
 const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'kaiteki-gym-production-v2';
 const safeAppId = String(rawAppId).replace(/\//g, '-');
 
-// ★無料プラン対応のため、アクセス保護用の共通パスワードを復帰
+// ★アクセス保護用の共通パスワード
 const PORTAL_PASSWORD = "kaiteki-user";
-
 const ADMIN_CC_EMAIL = "MCJP-DG-RIX_TOYAMA_TAIIKUKAN@mchcgr.com";
 
 // --- 初期登録団体リスト ---
@@ -210,6 +209,7 @@ const isWeekendOrHoliday = (dateStr) => {
   if (day === 0 || day === 6) return true; // 土日
   return isHoliday(dateStr); // または祝日
 };
+
 
 // --- ペナルティ判定関数 ---
 const isPenaltyTarget = (res) => {
@@ -538,7 +538,6 @@ function EditReservationModal({ reservation, groups, allReservations, isAdmin, o
         courts: facilities.includes('体育館') ? courts : null
       });
       onSuccess("予約内容を変更しました。");
-      onClose();
     } catch(e) {
       alert("変更に失敗しました。");
     } finally {
@@ -626,9 +625,7 @@ function EditReservationModal({ reservation, groups, allReservations, isAdmin, o
 
 // --- メインコンポーネント ---
 export default function App() {
-  // ★ ポータルのアクセス制限状態
   const [isPortalAuthorized, setIsPortalAuthorized] = useState(false);
-
   const [activeTab, setActiveTab] = useState('calendar');
   const [toastMessage, setToastMessage] = useState(null);
   const [preSelectedDate, setPreSelectedDate] = useState('');
@@ -638,28 +635,23 @@ export default function App() {
   const [passInput, setPassInput] = useState('');
   
   const [user, setUser] = useState(null);
-  // Emailを保持している認証ユーザーのみを管理者とみなす
   const isAdmin = !!(user && user.email); 
 
   const [reservations, setReservations] = useState([]);
   const [closedDays, setClosedDays] = useState([]);
   const [groups, setGroups] = useState([]); 
-  const [reports, setReports] = useState([]); // お問合せ・報告データ
-  const [announcementText, setAnnouncementText] = useState(''); // お知らせテキスト
+  const [reports, setReports] = useState([]); 
+  const [announcementText, setAnnouncementText] = useState(''); 
   const [penaltySettings, setPenaltySettings] = useState({ secondPenaltyDays: 30 });
   const [isLoading, setIsLoading] = useState(true);
 
-  // 予約編集用の状態
   const [editingReservation, setEditingReservation] = useState(null);
 
-  // Firestore listeners
   useEffect(() => {
-    // We only set up listeners if we are authenticated (isAdmin or isPortalAuthorized)
     if (!user || (!isAdmin && !isPortalAuthorized)) {
         setIsLoading(false);
         return;
     }
-
     setIsLoading(true);
 
     const resRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'reservations');
@@ -667,17 +659,12 @@ export default function App() {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setReservations(data);
       setIsLoading(false);
-    }, (err) => { 
-      console.error("Firestore Error (reservations):", err); 
-      setIsLoading(false); 
-    });
+    }, (err) => { setIsLoading(false); });
 
     const closedRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'closed_days');
     const unsubClosed = onSnapshot(closedRef, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setClosedDays(data);
-    }, (err) => {
-        console.error("Firestore Error (closed_days):", err);
     });
 
     const groupsRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'groups');
@@ -689,51 +676,33 @@ export default function App() {
             const docRef = doc(groupsRef);
             batch.set(docRef, { ...g, createdAt: new Date().toISOString() });
           });
-          batch.commit().catch(err => console.error("Initial groups error:", err));
+          batch.commit();
         }
       } else {
         const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setGroups(data.sort((a,b) => a.name.localeCompare(b.name, 'ja')));
       }
-    }, (err) => {
-        console.error("Firestore Error (groups):", err);
     });
 
     const reportsRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'reports');
     const unsubReports = onSnapshot(reportsRef, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setReports(data);
-    }, (err) => {
-        console.error("Firestore Error (reports):", err);
     });
 
-    // お知らせメッセージとペナルティ設定の取得
     const announceRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'system_messages', 'announcement');
     const unsubAnnounce = onSnapshot(announceRef, (docSnap) => {
       if (docSnap.exists()) setAnnouncementText(docSnap.data().text || '');
       else setAnnouncementText('');
-    }, (err) => {
-        console.error("Firestore Error (announcement):", err);
     });
 
     const penSettingsRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'settings', 'penalty');
     const unsubPenSettings = onSnapshot(penSettingsRef, (docSnap) => {
-      if (docSnap.exists()) {
-        setPenaltySettings({
-          secondPenaltyDays: docSnap.data().secondPenaltyDays || 30
-        });
-      }
-    }, (err) => {
-        console.error("Firestore Error (penalty settings):", err);
+      if (docSnap.exists()) setPenaltySettings({ secondPenaltyDays: docSnap.data().secondPenaltyDays || 30 });
     });
 
     return () => {
-      unsubRes();
-      unsubClosed();
-      unsubGroups();
-      unsubReports();
-      unsubAnnounce();
-      unsubPenSettings();
+      unsubRes(); unsubClosed(); unsubGroups(); unsubReports(); unsubAnnounce(); unsubPenSettings();
     };
   }, [user, isAdmin, isPortalAuthorized]);
 
@@ -744,7 +713,7 @@ export default function App() {
           try { await signInWithCustomToken(auth, __initial_auth_token); } 
           catch (e) { await signInAnonymously(auth); }
         } else { await signInAnonymously(auth); }
-      } catch (error) { console.error("Auth Error:", error); }
+      } catch (error) {}
     };
     initAuth();
     const unsubscribe = onAuthStateChanged(auth, (u) => {
@@ -756,19 +725,12 @@ export default function App() {
 
   useEffect(() => {
     if (!user) return;
-    
-    // URLハッシュによる管理者ログイン画面の隠し導線
     const handleHashChange = () => {
-      if (window.location.hash === '#admin') {
-        setShowLoginModal(true);
-      }
+      if (window.location.hash === '#admin') setShowLoginModal(true);
     };
     handleHashChange();
     window.addEventListener('hashchange', handleHashChange);
-    
-    return () => {
-      window.removeEventListener('hashchange', handleHashChange);
-    };
+    return () => window.removeEventListener('hashchange', handleHashChange);
   }, [user]);
 
   const showToast = (msg) => {
@@ -779,29 +741,19 @@ export default function App() {
   const handlePortalLogin = (e) => {
     e.preventDefault();
     const input = e.target.portalPass.value;
-    if (input === PORTAL_PASSWORD) {
-      setIsPortalAuthorized(true);
-    } else {
-      alert("パスワードが正しくありません。");
-    }
+    if (input === PORTAL_PASSWORD) setIsPortalAuthorized(true);
+    else alert("パスワードが正しくありません。");
   };
 
   const handleAdminLogin = async (e) => {
     e.preventDefault();
     try {
       await signInWithEmailAndPassword(auth, emailInput, passInput);
-      setShowLoginModal(false);
-      setEmailInput('');
-      setPassInput('');
-      setActiveTab('admin');
-      setIsPortalAuthorized(true); // 管理者ログイン成功時はポータル認証もパスさせる
+      setShowLoginModal(false); setEmailInput(''); setPassInput('');
+      setActiveTab('admin'); setIsPortalAuthorized(true);
       showToast('管理者としてログインしました');
-      // ハッシュを消去
-      if (window.location.hash === '#admin') {
-        window.history.replaceState(null, '', window.location.pathname + window.location.search);
-      }
+      if (window.location.hash === '#admin') window.history.replaceState(null, '', window.location.pathname + window.location.search);
     } catch (error) {
-      console.error(error);
       alert('メールアドレスまたはパスワードが正しくありません。');
     }
   };
@@ -809,23 +761,17 @@ export default function App() {
   const handleAdminLogout = async () => {
     try {
       await signOut(auth);
-      // ログアウト後は再度匿名ログインして一般ユーザー状態に戻す
       await signInAnonymously(auth);
-      setActiveTab('calendar');
-      setIsPortalAuthorized(false);
+      setActiveTab('calendar'); setIsPortalAuthorized(false);
       showToast('ログアウトしました');
-    } catch (error) {
-      console.error(error);
-    }
+    } catch (error) {}
   };
 
   const handleCalendarDelete = async (targetRes) => {
     if (!isAdmin) {
       const inputPass = window.prompt(`【${targetRes.name}】の予約を取り消します。\n予約時に設定した「取消用パスワード」を入力してください：`);
       if (inputPass === null) return;
-      if (inputPass !== targetRes.deletePass) {
-        return alert("パスワードが正しくありません。");
-      }
+      if (inputPass !== targetRes.deletePass) return alert("パスワードが正しくありません。");
     }
 
     const willPenalty = isPenaltyTarget(targetRes);
@@ -846,7 +792,6 @@ export default function App() {
 
     try {
       const batch = writeBatch(db);
-      
       const resRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', targetRes.id);
       batch.update(resRef, { 
         status: 'cancelled',
@@ -859,44 +804,30 @@ export default function App() {
           const groupRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'groups', targetGroup.id);
           const currentCount = targetGroup.penaltyCount || 0;
           const newCount = currentCount + 1;
-          
-          let pDays = 0;
-          if (newCount === 1) pDays = 0; // 初回は記録のみ
-          else pDays = penaltySettings.secondPenaltyDays || 30;
-
+          let pDays = newCount === 1 ? 0 : (penaltySettings.secondPenaltyDays || 30);
           let pUntil = targetGroup.penaltyUntil;
           if (pDays > 0) {
             const untilDate = new Date();
             untilDate.setDate(untilDate.getDate() + pDays);
             pUntil = untilDate.toISOString();
           }
-
-          batch.update(groupRef, {
-            penaltyCount: newCount,
-            penaltyUntil: pUntil
-          });
+          batch.update(groupRef, { penaltyCount: newCount, penaltyUntil: pUntil });
         }
       }
-
       await batch.commit();
       showToast('予約を取り消しました');
-    } catch (err) {
-      alert("削除に失敗しました。");
-    }
+    } catch (err) { alert("削除に失敗しました。"); }
   };
 
   const handleCalendarEdit = (targetRes) => {
     if (!isAdmin) {
       const inputPass = window.prompt(`【${targetRes.name}】の予約内容を変更します。\n予約時に設定した「取消用パスワード」を入力してください：`);
       if (inputPass === null) return;
-      if (inputPass !== targetRes.deletePass) {
-        return alert("パスワードが正しくありません。");
-      }
+      if (inputPass !== targetRes.deletePass) return alert("パスワードが正しくありません。");
     }
     setEditingReservation(targetRes);
   };
 
-  // ★ 共通アクセス認証画面
   if (!isPortalAuthorized && !isAdmin) {
     return (
       <div className="min-h-screen bg-blue-900 flex items-center justify-center p-4 relative">
@@ -928,7 +859,6 @@ export default function App() {
           </form>
         </div>
         
-        {/* 管理者ログインモーダル（隠しURLから呼び出された場合） */}
         {showLoginModal && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
             <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-sm">
@@ -977,7 +907,6 @@ export default function App() {
         </div>
       </header>
 
-      {/* 印刷時はコンテナの余白をなくし、最大幅制限を解除 */}
       <main className="max-w-6xl mx-auto px-4 py-6 relative min-h-[500px] print:max-w-none print:px-0 print:py-0 print:m-0">
         {isLoading ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-50 bg-opacity-75 z-10 py-20 print:hidden">
@@ -986,7 +915,6 @@ export default function App() {
           </div>
         ) : (
           <div className="w-full space-y-8 print:space-y-0">
-            {/* --- お知らせバナー (印刷時と管理画面では非表示) --- */}
             {announcementText && activeTab !== 'admin' && (
               <div className="bg-yellow-50 border-l-[6px] border-yellow-400 p-4 rounded-r-2xl shadow-sm flex items-start animate-in fade-in slide-in-from-top-4 print:hidden">
                 <Megaphone className="w-6 h-6 text-yellow-500 mr-3 flex-shrink-0 mt-0.5" />
@@ -1035,7 +963,6 @@ export default function App() {
         )}
       </main>
 
-      {/* 予約編集モーダル */}
       {editingReservation && (
         <EditReservationModal 
           reservation={editingReservation}
@@ -1047,7 +974,6 @@ export default function App() {
         />
       )}
 
-      {/* アプリ内からの管理者ログイン呼び出し用モーダル（ハッシュ対応用） */}
       {showLoginModal && !isAdmin && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm print:hidden">
           <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-sm">
@@ -1238,7 +1164,6 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringEndDate, setRecurringEndDate] = useState('');
 
-  // 予約確認モーダル用ステート
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   useEffect(() => {
@@ -1253,10 +1178,10 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
   }, [authIdInput, groups]);
 
   const maxRecurringCount = useMemo(() => {
-    if (userType === 'mcc') return 53; // 1年分 (約52週)
-    if (userType === 'soumu') return 53; // 1年分
-    if (userType === 'employee') return 15; // 約3ヶ月分
-    if (userType === 'external') return 10; // 約2ヶ月分
+    if (userType === 'mcc') return 53;
+    if (userType === 'soumu') return 53;
+    if (userType === 'employee') return 15;
+    if (userType === 'external') return 10;
     return 10; 
   }, [userType]);
 
@@ -1331,7 +1256,6 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
     setEquipment(prev => prev.includes(item) ? prev.filter(i => i !== item) : [...prev, item]);
   };
 
-  // 予約前チェック処理
   const handlePreSubmit = (e) => {
     e.preventDefault();
     if (!user) return alert("認証エラーです");
@@ -1349,7 +1273,6 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
     const selectedGroupData = groups.find(g => g.id === formData.groupId);
     if (!selectedGroupData) return alert("団体が見つかりません。");
 
-    // ペナルティチェック（予約停止期間中か？）
     if (selectedGroupData.penaltyUntil) {
       const penaltyEnd = new Date(selectedGroupData.penaltyUntil);
       if (penaltyEnd > new Date()) {
@@ -1372,10 +1295,8 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
     const currentMonth = today.getMonth() + 1;
     const endOfCurrentFiscalYear = new Date(currentMonth <= 3 ? currentYear : currentYear + 1, 2, 31); 
     const mccMaxDate = new Date(endOfCurrentFiscalYear.getFullYear() + 1, 2, 31);
-
     const employeeMaxDate = new Date();
     employeeMaxDate.setMonth(employeeMaxDate.getMonth() + 3);
-    
     const externalMaxDate = new Date();
     externalMaxDate.setMonth(externalMaxDate.getMonth() + 2);
 
@@ -1395,7 +1316,6 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
       }
     }
 
-    // 土日祝の時間制限
     for (const d of partitionedDates.valid) {
       if (isWeekendOrHoliday(d)) {
         if (formData.endTime > "17:00" || formData.startTime >= "17:00") {
@@ -1445,7 +1365,6 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
         requiresAdminOverride = true;
       }
 
-      // ★ 総務区分の場合は6面制限のチェックを行わない
       if (userType !== 'soumu' && isSixCourts && (currentSixCourtCount + newCount > 1)) {
         adminOverrideMessages.push(`・【${monthStr}】の全面(6面)予約の月間上限(1回)を超過します。`);
         requiresAdminOverride = true;
@@ -1463,7 +1382,6 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
       }
     }
 
-    // 重複チェックは特例でも突破不可（システムとして物理的に予約できないため）
     for (const d of partitionedDates.valid) {
       if (selectedFacilities.includes('体育館')) {
         const occ = getOccupiedCourts(d);
@@ -1479,7 +1397,6 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
       }
     }
     
-    // 全てのチェックを通過したら確認モーダルを表示
     setShowConfirmModal(true);
   };
 
@@ -1772,7 +1689,6 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
       </div>
     </form>
 
-    {/* --- 予約確認モーダル --- */}
     {showConfirmModal && (
       <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in">
         <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md space-y-6">
@@ -1832,8 +1748,6 @@ function CancelView({ reservations, groups, penaltySettings, isAdmin, onSuccess 
   const [authIdInput, setAuthIdInput] = useState('');
   const [targetGroup, setTargetGroup] = useState(null);
   const [inputDeletePass, setInputDeletePass] = useState('');
-  
-  // 免除申請用
   const [isExemptChecked, setIsExemptChecked] = useState(false);
 
   const handleSearch = (e) => {
@@ -1841,7 +1755,7 @@ function CancelView({ reservations, groups, penaltySettings, isAdmin, onSuccess 
     const g = groups.find(group => group.authId === authIdInput.trim());
     if (g) {
       setTargetGroup(g);
-      setIsExemptChecked(false); // 検索のたびにリセット
+      setIsExemptChecked(false);
     } else {
       setTargetGroup(null);
       alert("該当する団体が見つかりません。IDを確認してください。");
@@ -1850,16 +1764,13 @@ function CancelView({ reservations, groups, penaltySettings, isAdmin, onSuccess 
 
   const filteredResults = useMemo(() => {
     if (!targetGroup) return [];
-    return reservations.filter(res => 
-      res.status !== 'cancelled' && res.groupId === targetGroup.id
-    );
+    return reservations.filter(res => res.status !== 'cancelled' && res.groupId === targetGroup.id);
   }, [reservations, targetGroup]);
 
   const handleCancel = async (targetRes) => {
     if (!inputDeletePass) return alert("取消用パスワードを入力してください。");
     if (targetRes.deletePass !== inputDeletePass) return alert("パスワードが正しくありません。");
 
-    // ペナルティ判定
     const willPenalty = isPenaltyTarget(targetRes);
     
     if (willPenalty && !isExemptChecked) {
@@ -1873,44 +1784,31 @@ function CancelView({ reservations, groups, penaltySettings, isAdmin, onSuccess 
 
     try {
       const batch = writeBatch(db);
-      
-      // 予約ステータスの更新
       const resRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', targetRes.id);
       batch.update(resRef, { 
         status: 'cancelled',
         cancelReason: isExemptChecked ? '災害等による特例免除' : '自己都合'
       });
 
-      // ペナルティカウントの加算 (ペナルティ対象 ＆ 免除チェックなし の場合のみ)
       if (willPenalty && !isExemptChecked) {
         const groupRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'groups', targetGroup.id);
         const currentCount = targetGroup.penaltyCount || 0;
         const newCount = currentCount + 1;
-        
-        let pDays = 0;
-        if (newCount === 1) pDays = 0; // 初回は記録のみ
-        else pDays = penaltySettings.secondPenaltyDays || 30;
-
+        let pDays = newCount === 1 ? 0 : (penaltySettings.secondPenaltyDays || 30);
         let pUntil = targetGroup.penaltyUntil;
         if (pDays > 0) {
           const untilDate = new Date();
           untilDate.setDate(untilDate.getDate() + pDays);
           pUntil = untilDate.toISOString();
         }
-
-        batch.update(groupRef, {
-          penaltyCount: newCount,
-          penaltyUntil: pUntil
-        });
+        batch.update(groupRef, { penaltyCount: newCount, penaltyUntil: pUntil });
       }
 
       await batch.commit();
       onSuccess();
       setInputDeletePass('');
       setIsExemptChecked(false);
-    } catch (err) {
-      alert("削除に失敗しました。");
-    }
+    } catch (err) { alert("削除に失敗しました。"); }
   };
 
   return (
@@ -1951,7 +1849,6 @@ function CancelView({ reservations, groups, penaltySettings, isAdmin, onSuccess 
                   <Key className="h-5 w-5 text-red-500 flex-shrink-0" />
                   <input type="password" placeholder="取消用パスワードを入力" value={inputDeletePass} onChange={(e) => setInputDeletePass(e.target.value)} className="bg-white border-2 border-red-200 rounded-xl px-4 py-3 flex-1 text-sm font-bold outline-none focus:border-red-500 shadow-inner" />
                 </div>
-                
                 {isAdmin && (
                   <div className="pt-3 border-t border-red-100">
                     <label className="flex items-start gap-3 cursor-pointer p-2 hover:bg-red-100 rounded-lg transition-colors">
@@ -2115,7 +2012,6 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
   
   const [editAnnouncementText, setEditAnnouncementText] = useState('');
   
-  // ペナルティ設定用ステート
   const [editPenaltySettings, setEditPenaltySettings] = useState({ secondPenaltyDays: 30 });
 
   const [groupSearchTerm, setGroupSearchTerm] = useState('');
@@ -2922,7 +2818,7 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                               } else {
                                 const isRestricted = isWeekendOrHoliday(d) && start >= "17:00";
                                 if (isClosed || isRestricted) {
-                                  cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''} bg-gray-300/60 bg-[repeating-linear-gradient(45deg,transparent,transparent_2px,rgba(0,0,0,0.1)_2px,rgba(0,0,0,0.1)_4px)]`}></td>);
+                                  cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''} bg-[repeating-linear-gradient(45deg,rgba(0,0,0,0.05),rgba(0,0,0,0.05)_4px,rgba(0,0,0,0.1)_4px,rgba(0,0,0,0.1)_8px)]`}></td>);
                                 } else {
                                   cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''}`}></td>);
                                 }
@@ -2955,7 +2851,6 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
   );
 }
 
-// --- 月間予定表プレビュー（タイムライン形式に修正） ---
 function MonthlyPrintView({ reservations, closedDays, monthStr, onBack }) {
   const [yearStr, mStr] = monthStr.split('-');
   const year = parseInt(yearStr);
@@ -3095,7 +2990,7 @@ function MonthlyPrintView({ reservations, closedDays, monthStr, onBack }) {
                               } else {
                                 const isRestricted = isWeekendOrHoliday(d) && start >= "17:00";
                                 if (isClosed || isRestricted) {
-                                  cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''} bg-gray-300/60 bg-[repeating-linear-gradient(45deg,transparent,transparent_2px,rgba(0,0,0,0.1)_2px,rgba(0,0,0,0.1)_4px)]`}></td>);
+                                  cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''} bg-[repeating-linear-gradient(45deg,rgba(0,0,0,0.05),rgba(0,0,0,0.05)_4px,rgba(0,0,0,0.1)_4px,rgba(0,0,0,0.1)_8px)]`}></td>);
                                 } else {
                                   cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''}`}></td>);
                                 }
@@ -3203,6 +3098,19 @@ function RulesView() {
                   <div className="bg-red-100 p-3 rounded-xl border border-red-200">
                     <p className="text-[10px] text-red-600 mb-1">2回目以降</p>
                     <p className="text-base font-black text-red-800">該当日より1カ月の予約停止</p>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-white p-4 rounded-2xl border border-red-100 text-xs font-bold text-gray-700 space-y-2">
+                <div className="text-red-600 font-black mb-1 border-b border-red-100 pb-1">■ その他「個別の案件」への対応</div>
+                <div className="grid grid-cols-2 gap-2 text-center mt-2">
+                  <div className="bg-gray-100 p-3 rounded-xl border border-gray-200 flex flex-col justify-center">
+                    <p className="text-[10px] text-gray-500 mb-1">初回</p>
+                    <p className="text-base font-black text-gray-800">注意</p>
+                  </div>
+                  <div className="bg-red-100 p-3 rounded-xl border border-red-200 flex flex-col justify-center">
+                    <p className="text-[10px] text-red-600 mb-1">2回目以降</p>
+                    <p className="text-sm font-black text-red-800">総務報告後、半年間の利用停止</p>
                   </div>
                 </div>
               </div>
