@@ -765,15 +765,20 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // ★修正箇所：初期マウント時およびハッシュ変更時に常に #admin を監視する
   useEffect(() => {
-    if (!user) return;
-    const handleHashChange = () => {
-      if (window.location.hash === '#admin') setShowLoginModal(true);
+    const checkHash = () => {
+      if (window.location.hash === '#admin') {
+        setShowLoginModal(true);
+      }
     };
-    handleHashChange();
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, [user]);
+    
+    // 初回レンダリング時にもチェックを実行
+    checkHash();
+    
+    window.addEventListener('hashchange', checkHash);
+    return () => window.removeEventListener('hashchange', checkHash);
+  }, []); // 依存配列を空にし、userやisPortalAuthorizedに依存せず常に監視する
 
   const showToast = (msg) => {
     setToastMessage(msg);
@@ -831,7 +836,7 @@ export default function App() {
 
   const handleCalendarDelete = async (targetRes) => {
     if (!isAdmin) {
-      const inputPass = window.prompt(`【${targetRes.name}】の予約を取り刺します。\n予約時に設定した「取消用パスワード」を入力してください：`);
+      const inputPass = window.prompt(`【${targetRes.name}】の予約を取り消します。\n予約時に設定した「取消用パスワード」を入力してください：`);
       if (inputPass === null) return;
       if (inputPass !== targetRes.deletePass) return alert("パスワードが正しくありません。");
     }
