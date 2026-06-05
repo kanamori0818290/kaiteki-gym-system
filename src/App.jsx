@@ -686,18 +686,27 @@ export default function App() {
     }
     setIsLoading(true);
 
+    const fallbackTimer = setTimeout(() => {
+      setIsLoading(false);
+    }, 5000);
+
     const resRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'reservations');
     const unsubRes = onSnapshot(resRef, (snapshot) => {
+      clearTimeout(fallbackTimer);
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setReservations(data);
       setIsLoading(false);
-    }, (err) => { setIsLoading(false); });
+    }, (err) => { 
+      clearTimeout(fallbackTimer);
+      console.error(err);
+      setIsLoading(false); 
+    });
 
     const closedRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'closed_days');
     const unsubClosed = onSnapshot(closedRef, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setClosedDays(data);
-    });
+    }, (err) => console.error(err));
 
     const groupsRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'groups');
     const unsubGroups = onSnapshot(groupsRef, (snapshot) => {
@@ -708,32 +717,33 @@ export default function App() {
             const docRef = doc(groupsRef);
             batch.set(docRef, { ...g, createdAt: new Date().toISOString() });
           });
-          batch.commit();
+          batch.commit().catch(err => console.error(err));
         }
       } else {
         const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setGroups(data.sort((a,b) => a.name.localeCompare(b.name, 'ja')));
       }
-    });
+    }, (err) => console.error(err));
 
     const reportsRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'reports');
     const unsubReports = onSnapshot(reportsRef, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setReports(data);
-    });
+    }, (err) => console.error(err));
 
     const announceRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'system_messages', 'announcement');
     const unsubAnnounce = onSnapshot(announceRef, (docSnap) => {
       if (docSnap.exists()) setAnnouncementText(docSnap.data().text || '');
       else setAnnouncementText('');
-    });
+    }, (err) => console.error(err));
 
     const penSettingsRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'settings', 'penalty');
     const unsubPenSettings = onSnapshot(penSettingsRef, (docSnap) => {
       if (docSnap.exists()) setPenaltySettings({ secondPenaltyDays: docSnap.data().secondPenaltyDays || 30 });
-    });
+    }, (err) => console.error(err));
 
     return () => {
+      clearTimeout(fallbackTimer);
       unsubRes(); unsubClosed(); unsubGroups(); unsubReports(); unsubAnnounce(); unsubPenSettings();
     };
   }, [user, isAdmin, isPortalAuthorized]);
@@ -821,7 +831,7 @@ export default function App() {
 
   const handleCalendarDelete = async (targetRes) => {
     if (!isAdmin) {
-      const inputPass = window.prompt(`【${targetRes.name}】の予約を取り消します。\n予約時に設定した「取消用パスワード」を入力してください：`);
+      const inputPass = window.prompt(`【${targetRes.name}】の予約を取り刺します。\n予約時に設定した「取消用パスワード」を入力してください：`);
       if (inputPass === null) return;
       if (inputPass !== targetRes.deletePass) return alert("パスワードが正しくありません。");
     }
@@ -2607,7 +2617,6 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
                         <button onClick={()=>handleDeleteGroup(g.id)} className="text-indigo-300 hover:text-red-600 p-2 transition-colors"><Trash2 className="h-4 w-4"/></button>
                       </div>
                     </div>
-                    {/* ペナルティ情報エリア */}
                     <div className={`mt-auto p-2 rounded-lg flex items-center justify-between ${pCount > 0 ? 'bg-red-100' : 'bg-gray-50'}`}>
                       <div className="text-[10px] font-bold text-red-800 flex flex-col">
                         <span>ペナルティ: {pCount}回</span>
