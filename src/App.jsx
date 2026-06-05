@@ -777,7 +777,19 @@ export default function App() {
     checkHash();
     
     window.addEventListener('hashchange', checkHash);
-    return () => window.removeEventListener('hashchange', checkHash);
+
+    // ★追加：プレビュー環境でもテストできるように、隠しショートカットキー（Alt + A または Option + A）を追加
+    const handleKeyDown = (e) => {
+      if (e.altKey && e.key.toLowerCase() === 'a') {
+        setShowLoginModal(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('hashchange', checkHash);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, []); // 依存配列を空にし、userやisPortalAuthorizedに依存せず常に監視する
 
   const showToast = (msg) => {
