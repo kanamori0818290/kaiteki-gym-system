@@ -765,20 +765,16 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // ★修正箇所：初期マウント時およびハッシュ変更時に常に #admin を監視する
+  // ★ URLハッシュと隠しショートカットの監視
   useEffect(() => {
     const checkHash = () => {
       if (window.location.hash === '#admin') {
         setShowLoginModal(true);
       }
     };
-    
-    // 初回レンダリング時にもチェックを実行
     checkHash();
-    
     window.addEventListener('hashchange', checkHash);
 
-    // ★追加：プレビュー環境でもテストできるように、隠しショートカットキー（Alt + A または Option + A）を追加
     const handleKeyDown = (e) => {
       if (e.altKey && e.key.toLowerCase() === 'a') {
         setShowLoginModal(true);
@@ -790,7 +786,7 @@ export default function App() {
       window.removeEventListener('hashchange', checkHash);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, []); // 依存配列を空にし、userやisPortalAuthorizedに依存せず常に監視する
+  }, []);
 
   const showToast = (msg) => {
     setToastMessage(msg);
@@ -831,7 +827,6 @@ export default function App() {
       setShowLoginModal(false); setEmailInput(''); setPassInput('');
       setActiveTab('admin'); setIsPortalAuthorized(true);
       showToast('管理者としてログインしました');
-      if (window.location.hash === '#admin') window.history.replaceState(null, '', window.location.pathname + window.location.search);
     } catch (error) {
       alert('メールアドレスまたはパスワードが正しくありません。');
     }
@@ -913,7 +908,11 @@ export default function App() {
       <div className="min-h-screen bg-blue-900 flex items-center justify-center p-4 relative">
         <div className="bg-white p-10 rounded-[3rem] shadow-2xl w-full max-w-md text-center space-y-8 animate-in zoom-in duration-500 z-10">
           <div className="flex justify-center">
-            <div className={`p-4 rounded-3xl ${isLocked ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
+            <div 
+              className={`p-4 rounded-3xl cursor-pointer select-none ${isLocked ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}
+              onDoubleClick={() => setShowLoginModal(true)}
+              style={{ WebkitTapHighlightColor: 'transparent' }}
+            >
               {isLocked ? <Lock className="h-12 w-12" /> : <KeyRound className="h-12 w-12" />}
             </div>
           </div>
@@ -963,7 +962,7 @@ export default function App() {
                 <input type="email" autoFocus value={emailInput} onChange={(e) => setEmailInput(e.target.value)} required className="w-full border-2 border-gray-100 p-3 rounded-xl mb-4 text-sm font-bold focus:border-blue-500 outline-none transition-all shadow-inner" placeholder="管理者メールアドレス" />
                 <input type="password" value={passInput} onChange={(e) => setPassInput(e.target.value)} required className="w-full border-2 border-gray-100 p-3 rounded-xl mb-6 text-center text-lg tracking-widest focus:border-blue-500 outline-none transition-all shadow-inner" placeholder="パスワード" />
                 <div className="flex space-x-3">
-                  <button type="button" onClick={() => {setShowLoginModal(false); window.history.replaceState(null, '', window.location.pathname + window.location.search);}} className="flex-1 text-gray-500 py-2 font-bold hover:bg-gray-100 rounded-xl transition-colors">閉じる</button>
+                  <button type="button" onClick={() => setShowLoginModal(false)} className="flex-1 text-gray-500 py-2 font-bold hover:bg-gray-100 rounded-xl transition-colors">閉じる</button>
                   <button type="submit" className="flex-1 bg-blue-600 text-white py-2 rounded-xl font-bold hover:bg-blue-700 shadow-md transition-all active:scale-95">ログイン</button>
                 </div>
               </form>
@@ -982,7 +981,12 @@ export default function App() {
             <Building className="h-8 w-8 text-blue-200" />
             <div>
               <div className="flex items-center">
-                <h1 className="text-xl font-bold tracking-tight mr-2 font-bold">KAITEKIケミカル体育館</h1>
+                <h1 
+                  className="text-xl font-bold tracking-tight mr-2 font-bold select-none cursor-default"
+                  onDoubleClick={() => !isAdmin && setShowLoginModal(true)}
+                >
+                  KAITEKIケミカル体育館
+                </h1>
                 {isAdmin && (
                   <button onClick={handleAdminLogout} className="flex items-center text-[10px] bg-red-600 px-3 py-1 rounded-full font-bold hover:bg-red-700 shadow">
                     <LogOut className="h-3 w-3 mr-1" />解除
@@ -2634,6 +2638,7 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
                         <button onClick={()=>handleDeleteGroup(g.id)} className="text-indigo-300 hover:text-red-600 p-2 transition-colors"><Trash2 className="h-4 w-4"/></button>
                       </div>
                     </div>
+                    {/* ペナルティ情報エリア */}
                     <div className={`mt-auto p-2 rounded-lg flex items-center justify-between ${pCount > 0 ? 'bg-red-100' : 'bg-gray-50'}`}>
                       <div className="text-[10px] font-bold text-red-800 flex flex-col">
                         <span>ペナルティ: {pCount}回</span>
