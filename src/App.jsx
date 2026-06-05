@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban, Mail, Key, UserCheck, MousePointerClick, RotateCcw, Filter, Unlock, BarChart3, Megaphone, MessageSquare, AlertOctagon, Settings, Edit2 } from 'lucide-react';
+import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban, AlertOctagon, Edit2, RotateCcw, Filter, Unlock, BarChart3, Megaphone, MessageSquare, MousePointerClick } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, query, writeBatch, setDoc } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, writeBatch, setDoc } from 'firebase/firestore';
 
 // --- Firebase 設定 ---
 const firebaseConfig = {
@@ -215,17 +215,13 @@ const isPenaltyTarget = (res) => {
   const createdAt = new Date(res.createdAt);
   
   // 1時間以内は免除
-  if (now.getTime() - createdAt.getTime() <= 60 * 60 * 1000) {
-    return false;
-  }
+  if (now.getTime() - createdAt.getTime() <= 60 * 60 * 1000) return false;
   
   const todayZero = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const resDateParts = res.date.split('-');
   const resDateZero = new Date(resDateParts[0], resDateParts[1] - 1, resDateParts[2]);
   
   const diffDays = Math.floor((resDateZero - todayZero) / 86400000);
-  
-  // diffDays: 0(当日), 負の値(無断等、すでに時間が過ぎている)
   return diffDays <= 0;
 };
 
@@ -336,9 +332,7 @@ function TimeGridSelector({ selectedDate, reservations, currentStartTime, curren
   };
 
   const handleMouseEnter = (r, c) => {
-    if (isDragging) {
-      setDragCurrent({ r, c });
-    }
+    if (isDragging) setDragCurrent({ r, c });
   };
 
   const handleMouseUp = () => {
@@ -350,7 +344,6 @@ function TimeGridSelector({ selectedDate, reservations, currentStartTime, curren
         facilities.add(res.type);
         if (res.type === '体育館') courts.push(res.id);
       }
-      
       onSelectionChange({
         startTime: TIME_SLOTS[dragRect.minC],
         endTime: END_TIMES[dragRect.maxC],
@@ -533,7 +526,6 @@ function EditReservationModal({ reservation, groups, allReservations, isAdmin, o
         courts: facilities.includes('体育館') ? courts : null
       });
       onSuccess("予約内容を変更しました。");
-      onClose();
     } catch(e) {
       alert("変更に失敗しました。");
     } finally {
@@ -643,84 +635,28 @@ export default function App() {
 
   const [editingReservation, setEditingReservation] = useState(null);
 
-  // ★ パスワード総当たり対策用のステート
+  // パスワード総当たり対策用のステート
   const [loginAttempts, setLoginAttempts] = useState(0);
   const [lockoutUntil, setLockoutUntil] = useState(null);
   const [remainingLockTime, setRemainingLockTime] = useState(0);
 
-  const MAX_ATTEMPTS = 5; // ロックまでの最大失敗回数
-  const LOCKOUT_DURATION = 5 * 60 * 1000; // 5分間 (ミリ秒)
+  const MAX_ATTEMPTS = 5; 
+  const LOCKOUT_DURATION = 5 * 60 * 1000; 
 
-  // 初期化時に localStorage を確認してロック状態を復元
   useEffect(() => {
-    if (!user || (!isAdmin && !isPortalAuthorized)) {
-        setIsLoading(false);
-        return;
+    const storedAttempts = parseInt(localStorage.getItem('gym_login_attempts') || '0', 10);
+    const storedLockout = parseInt(localStorage.getItem('gym_lockout_until') || '0', 10);
+    
+    setLoginAttempts(storedAttempts);
+    if (storedLockout > Date.now()) {
+      setLockoutUntil(storedLockout);
+    } else if (storedLockout !== 0) {
+      localStorage.removeItem('gym_login_attempts');
+      localStorage.removeItem('gym_lockout_until');
+      setLoginAttempts(0);
+      setLockoutUntil(null);
     }
-    setIsLoading(true);
-
-    // データ読み込みがスタックした際の安全装置（5秒で強制解除）
-    const fallbackTimer = setTimeout(() => {
-      setIsLoading(false);
-    }, 5000);
-
-    const resRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'reservations');
-    const unsubRes = onSnapshot(resRef, (snapshot) => {
-      clearTimeout(fallbackTimer);
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setReservations(data);
-      setIsLoading(false);
-    }, (err) => { 
-      clearTimeout(fallbackTimer);
-      console.error("Firebase Error:", err);
-      setIsLoading(false); 
-    });
-
-    const closedRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'closed_days');
-    const unsubClosed = onSnapshot(closedRef, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setClosedDays(data);
-    }, (err) => console.error(err));
-
-    const groupsRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'groups');
-    const unsubGroups = onSnapshot(groupsRef, (snapshot) => {
-      if (snapshot.empty) {
-        if (isAdmin) {
-          const batch = writeBatch(db);
-          INITIAL_GROUPS.forEach(g => {
-            const docRef = doc(groupsRef);
-            batch.set(docRef, { ...g, createdAt: new Date().toISOString() });
-          });
-          batch.commit().catch(err => console.error(err));
-        }
-      } else {
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setGroups(data.sort((a,b) => a.name.localeCompare(b.name, 'ja')));
-      }
-    }, (err) => console.error(err));
-
-    const reportsRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'reports');
-    const unsubReports = onSnapshot(reportsRef, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setReports(data);
-    }, (err) => console.error(err));
-
-    const announceRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'system_messages', 'announcement');
-    const unsubAnnounce = onSnapshot(announceRef, (docSnap) => {
-      if (docSnap.exists()) setAnnouncementText(docSnap.data().text || '');
-      else setAnnouncementText('');
-    }, (err) => console.error(err));
-
-    const penSettingsRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'settings', 'penalty');
-    const unsubPenSettings = onSnapshot(penSettingsRef, (docSnap) => {
-      if (docSnap.exists()) setPenaltySettings({ secondPenaltyDays: docSnap.data().secondPenaltyDays || 30 });
-    }, (err) => console.error(err));
-
-    return () => {
-      clearTimeout(fallbackTimer);
-      unsubRes(); unsubClosed(); unsubGroups(); unsubReports(); unsubAnnounce(); unsubPenSettings();
-    };
-  }, [user, isAdmin, isPortalAuthorized]);
+  }, []);
 
   useEffect(() => {
     let timer;
@@ -742,6 +678,65 @@ export default function App() {
     }
     return () => clearInterval(timer);
   }, [lockoutUntil]);
+
+  useEffect(() => {
+    if (!user || (!isAdmin && !isPortalAuthorized)) {
+        setIsLoading(false);
+        return;
+    }
+    setIsLoading(true);
+
+    const resRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'reservations');
+    const unsubRes = onSnapshot(resRef, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setReservations(data);
+      setIsLoading(false);
+    }, (err) => { setIsLoading(false); });
+
+    const closedRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'closed_days');
+    const unsubClosed = onSnapshot(closedRef, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setClosedDays(data);
+    });
+
+    const groupsRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'groups');
+    const unsubGroups = onSnapshot(groupsRef, (snapshot) => {
+      if (snapshot.empty) {
+        if (isAdmin) {
+          const batch = writeBatch(db);
+          INITIAL_GROUPS.forEach(g => {
+            const docRef = doc(groupsRef);
+            batch.set(docRef, { ...g, createdAt: new Date().toISOString() });
+          });
+          batch.commit();
+        }
+      } else {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setGroups(data.sort((a,b) => a.name.localeCompare(b.name, 'ja')));
+      }
+    });
+
+    const reportsRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'reports');
+    const unsubReports = onSnapshot(reportsRef, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setReports(data);
+    });
+
+    const announceRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'system_messages', 'announcement');
+    const unsubAnnounce = onSnapshot(announceRef, (docSnap) => {
+      if (docSnap.exists()) setAnnouncementText(docSnap.data().text || '');
+      else setAnnouncementText('');
+    });
+
+    const penSettingsRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'settings', 'penalty');
+    const unsubPenSettings = onSnapshot(penSettingsRef, (docSnap) => {
+      if (docSnap.exists()) setPenaltySettings({ secondPenaltyDays: docSnap.data().secondPenaltyDays || 30 });
+    });
+
+    return () => {
+      unsubRes(); unsubClosed(); unsubGroups(); unsubReports(); unsubAnnounce(); unsubPenSettings();
+    };
+  }, [user, isAdmin, isPortalAuthorized]);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -777,9 +772,7 @@ export default function App() {
 
   const handlePortalLogin = (e) => {
     e.preventDefault();
-    if (lockoutUntil && lockoutUntil > Date.now()) {
-      return; // ロック中は処理しない
-    }
+    if (lockoutUntil && lockoutUntil > Date.now()) return;
 
     const input = e.target.portalPass.value;
     if (input === PORTAL_PASSWORD) {
@@ -1049,23 +1042,7 @@ export default function App() {
           onSuccess={(msg) => { showToast(msg); setEditingReservation(null); }}
         />
       )}
-
-      {showLoginModal && !isAdmin && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm print:hidden">
-          <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-sm">
-            <h3 className="text-xl font-bold mb-6 flex items-center text-blue-800"><ShieldCheck className="mr-3 h-6 w-6"/>管理者ログイン</h3>
-            <form onSubmit={handleAdminLogin}>
-              <input type="email" autoFocus value={emailInput} onChange={(e) => setEmailInput(e.target.value)} required className="w-full border-2 border-gray-100 p-3 rounded-xl mb-4 text-sm font-bold focus:border-blue-500 outline-none transition-all shadow-inner" placeholder="管理者メールアドレス" />
-              <input type="password" value={passInput} onChange={(e) => setPassInput(e.target.value)} required className="w-full border-2 border-gray-100 p-3 rounded-xl mb-6 text-center text-lg tracking-widest focus:border-blue-500 outline-none transition-all shadow-inner" placeholder="パスワード" />
-              <div className="flex space-x-3">
-                <button type="button" onClick={() => {setShowLoginModal(false); window.history.replaceState(null, '', window.location.pathname + window.location.search);}} className="flex-1 text-gray-500 py-2 font-bold hover:bg-gray-100 rounded-xl transition-colors">閉じる</button>
-                <button type="submit" className="flex-1 bg-blue-600 text-white py-2 rounded-xl font-bold hover:bg-blue-700 shadow-md transition-all active:scale-95">ログイン</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
+      
       {toastMessage && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-8 py-3 rounded-full shadow-2xl flex items-center space-x-3 animate-in slide-in-from-bottom-10 z-50 print:hidden">
           <CheckSquare className="h-5 w-5 text-green-400" />
@@ -1093,8 +1070,61 @@ function CalendarView({ reservations, closedDays, isAdmin, onEditClick, onDelete
   const selectedDayReservations = reservations.filter(res => res.date === selectedDateStr && res.status !== 'cancelled');
   const isSelectedDateClosed = closedDays.some(cd => cd.date === selectedDateStr);
 
+  // 本日の予約を取得して安否確認パネルに表示（管理者の場合）
+  const todayStr = formatDateStr(new Date());
+  const todaysReservations = useMemo(() => {
+    return reservations.filter(r => r.date === todayStr && r.status !== 'cancelled');
+  }, [reservations, todayStr]);
+
+  // 現在時刻と比べて「利用中」かどうかを判定する関数
+  const isCurrentlyUsing = (startTime, endTime) => {
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const [sH, sM] = startTime.split(':').map(Number);
+    const [eH, eM] = endTime.split(':').map(Number);
+    const startMins = sH * 60 + sM;
+    const endMins = eH * 60 + eM;
+    return currentMinutes >= startMins && currentMinutes < endMins;
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
+      
+      {/* 🚨 管理者用の緊急時安否確認パネル */}
+      {isAdmin && (
+        <div className="bg-red-50 rounded-2xl border-[3px] border-red-500 shadow-xl overflow-hidden animate-in slide-in-from-top-4">
+          <div className="bg-red-500 text-white p-4 flex items-center justify-between">
+            <h3 className="text-lg font-black flex items-center tracking-widest"><AlertTriangle className="w-6 h-6 mr-2 animate-pulse" /> 緊急時：本日の利用状況（安否確認）</h3>
+            <span className="bg-red-700 px-3 py-1 rounded-full text-xs font-bold">{todayStr}</span>
+          </div>
+          <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-60 overflow-y-auto">
+            {todaysReservations.length === 0 ? (
+              <p className="col-span-full text-center text-red-400 font-bold py-4">本日の予約はありません。</p>
+            ) : (
+              todaysReservations.sort((a,b)=>(a.startTime || "").localeCompare(b.startTime || "")).map(res => {
+                const isUsing = isCurrentlyUsing(res.startTime, res.endTime);
+                return (
+                  <div key={res.id} className={`p-4 rounded-xl border-2 flex flex-col justify-between ${isUsing ? 'bg-red-100 border-red-400 shadow-md' : 'bg-white border-red-100 opacity-70'}`}>
+                    <div>
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="font-black text-red-900 text-lg">{res.startTime} - {res.endTime}</span>
+                        {isUsing && <span className="bg-red-600 text-white text-[10px] font-black px-2 py-0.5 rounded animate-pulse">現在利用中</span>}
+                      </div>
+                      <p className="font-black text-gray-800 text-sm truncate">{res.name}</p>
+                      <p className="text-xs font-bold text-gray-500 mt-1">{res.place} {res.courts ? `(${Array.isArray(res.courts) ? res.courts.join(', ') : res.courts})` : ''}</p>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-red-200/50 flex justify-between items-center text-xs font-bold">
+                      <span className="text-gray-500">想定人数: {res.userCount}名</span>
+                      <span className="text-red-700 bg-red-200/50 px-2 py-1 rounded">ID: {res.authId || res.groupId}</span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row justify-between items-end gap-4">
         <h2 className="text-2xl font-bold text-gray-800 flex items-center tracking-tight"><CalendarDays className="mr-2 h-7 w-7 text-blue-600"/> 予約状況カレンダー</h2>
         <div className="flex space-x-4 text-xs bg-white px-4 py-2 rounded-xl shadow-sm border font-bold">
@@ -1254,10 +1284,10 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
   }, [authIdInput, groups]);
 
   const maxRecurringCount = useMemo(() => {
-    if (userType === 'mcc') return 53; 
-    if (userType === 'soumu') return 53; 
-    if (userType === 'employee') return 15; 
-    if (userType === 'external') return 10; 
+    if (userType === 'mcc') return 53;
+    if (userType === 'soumu') return 53;
+    if (userType === 'employee') return 15;
+    if (userType === 'external') return 10;
     return 10; 
   }, [userType]);
 
@@ -1549,7 +1579,7 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
             <div className="space-y-1 relative">
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3">団体認証IDを入力 *</label>
               <div className="relative">
-                <Key className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <KeyRound className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
                   type="password"
                   required
@@ -1765,7 +1795,6 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
       </div>
     </form>
 
-    {/* --- 予約確認モーダル --- */}
     {showConfirmModal && (
       <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm animate-in fade-in">
         <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md space-y-6">
@@ -1825,8 +1854,6 @@ function CancelView({ reservations, groups, penaltySettings, isAdmin, onSuccess 
   const [authIdInput, setAuthIdInput] = useState('');
   const [targetGroup, setTargetGroup] = useState(null);
   const [inputDeletePass, setInputDeletePass] = useState('');
-  
-  // 免除申請用
   const [isExemptChecked, setIsExemptChecked] = useState(false);
 
   const handleSearch = (e) => {
@@ -1834,7 +1861,7 @@ function CancelView({ reservations, groups, penaltySettings, isAdmin, onSuccess 
     const g = groups.find(group => group.authId === authIdInput.trim());
     if (g) {
       setTargetGroup(g);
-      setIsExemptChecked(false); // 検索のたびにリセット
+      setIsExemptChecked(false);
     } else {
       setTargetGroup(null);
       alert("該当する団体が見つかりません。IDを確認してください。");
@@ -1843,20 +1870,17 @@ function CancelView({ reservations, groups, penaltySettings, isAdmin, onSuccess 
 
   const filteredResults = useMemo(() => {
     if (!targetGroup) return [];
-    return reservations.filter(res => 
-      res.status !== 'cancelled' && res.groupId === targetGroup.id
-    );
+    return reservations.filter(res => res.status !== 'cancelled' && res.groupId === targetGroup.id);
   }, [reservations, targetGroup]);
 
   const handleCancel = async (targetRes) => {
     if (!inputDeletePass) return alert("取消用パスワードを入力してください。");
     if (targetRes.deletePass !== inputDeletePass) return alert("パスワードが正しくありません。");
 
-    // ペナルティ判定
     const willPenalty = isPenaltyTarget(targetRes);
     
     if (willPenalty && !isExemptChecked) {
-      const confirmMsg = "【警告：ペナルティ対象のキャンセルです】\n\nこのキャンセルは前日・当日キャンセルのため、ペナルティ（予約停止）の対象となります。\n" +
+      const confirmMsg = "【警告：ペナルティ対象のキャンセルです】\n\nこのキャンセルは当日・無断キャンセルのため、ペナルティ（予約停止）の対象となります。\n" +
         (isAdmin ? "※災害・大雪などのやむを得ない理由の場合は、キャンセル画面の「免除を申告する」にチェックを入れてください。\n\n" : "\n") +
         "本当にキャンセルを実行しますか？";
       if (!window.confirm(confirmMsg)) return;
@@ -1866,44 +1890,31 @@ function CancelView({ reservations, groups, penaltySettings, isAdmin, onSuccess 
 
     try {
       const batch = writeBatch(db);
-      
-      // 予約ステータスの更新
       const resRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', targetRes.id);
       batch.update(resRef, { 
         status: 'cancelled',
         cancelReason: isExemptChecked ? '災害等による特例免除' : '自己都合'
       });
 
-      // ペナルティカウントの加算 (ペナルティ対象 ＆ 免除チェックなし の場合のみ)
       if (willPenalty && !isExemptChecked) {
         const groupRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'groups', targetGroup.id);
         const currentCount = targetGroup.penaltyCount || 0;
         const newCount = currentCount + 1;
-        
-        let pDays = 0;
-        if (newCount === 1) pDays = 0; // 初回は記録のみ
-        else pDays = penaltySettings.secondPenaltyDays || 30;
-
+        let pDays = newCount === 1 ? 0 : (penaltySettings.secondPenaltyDays || 30);
         let pUntil = targetGroup.penaltyUntil;
         if (pDays > 0) {
           const untilDate = new Date();
           untilDate.setDate(untilDate.getDate() + pDays);
           pUntil = untilDate.toISOString();
         }
-
-        batch.update(groupRef, {
-          penaltyCount: newCount,
-          penaltyUntil: pUntil
-        });
+        batch.update(groupRef, { penaltyCount: newCount, penaltyUntil: pUntil });
       }
 
       await batch.commit();
       onSuccess();
       setInputDeletePass('');
       setIsExemptChecked(false);
-    } catch (err) {
-      alert("削除に失敗しました。");
-    }
+    } catch (err) { alert("削除に失敗しました。"); }
   };
 
   return (
@@ -1917,7 +1928,7 @@ function CancelView({ reservations, groups, penaltySettings, isAdmin, onSuccess 
 
       <div className="bg-white p-8 rounded-[2.5rem] border shadow-xl">
         <form onSubmit={handleSearch} className="relative group mb-8">
-          <Key className="absolute left-6 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-400" />
+          <KeyRound className="absolute left-6 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-400" />
           <input 
             type="password" 
             value={authIdInput} 
@@ -1941,17 +1952,16 @@ function CancelView({ reservations, groups, penaltySettings, isAdmin, onSuccess 
             {filteredResults.length > 0 && (
               <div className="bg-red-50 p-5 rounded-2xl mb-4 border border-red-200 space-y-4">
                 <div className="flex items-center gap-3">
-                  <Key className="h-5 w-5 text-red-500 flex-shrink-0" />
+                  <KeyRound className="h-5 w-5 text-red-500 flex-shrink-0" />
                   <input type="password" placeholder="取消用パスワードを入力" value={inputDeletePass} onChange={(e) => setInputDeletePass(e.target.value)} className="bg-white border-2 border-red-200 rounded-xl px-4 py-3 flex-1 text-sm font-bold outline-none focus:border-red-500 shadow-inner" />
                 </div>
-                
                 {isAdmin && (
                   <div className="pt-3 border-t border-red-100">
                     <label className="flex items-start gap-3 cursor-pointer p-2 hover:bg-red-100 rounded-lg transition-colors">
                       <input type="checkbox" checked={isExemptChecked} onChange={(e) => setIsExemptChecked(e.target.checked)} className="mt-1 w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500" />
                       <div>
                         <span className="text-sm font-black text-red-800 block">災害・大雪などによる特例免除として申告する（管理者専用）</span>
-                        <span className="text-[10px] font-bold text-red-600 block mt-1 leading-relaxed">※前日・当日のキャンセルでもペナルティが免除されます。不正防止のため管理者へ記録が残ります。</span>
+                        <span className="text-[10px] font-bold text-red-600 block mt-1 leading-relaxed">※当日・無断キャンセルでもペナルティが免除されます。</span>
                       </div>
                     </label>
                   </div>
@@ -2046,7 +2056,7 @@ function ReportView({ groups, user, onSuccess }) {
 
       <div className="bg-white p-8 rounded-[2.5rem] border shadow-xl">
         <form onSubmit={handleSearch} className="relative group mb-8">
-          <Key className="absolute left-6 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-400" />
+          <KeyRound className="absolute left-6 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-400" />
           <input 
             type="password" 
             value={authIdInput} 
@@ -2108,7 +2118,6 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
   
   const [editAnnouncementText, setEditAnnouncementText] = useState('');
   
-  // ペナルティ設定用ステート
   const [editPenaltySettings, setEditPenaltySettings] = useState({ secondPenaltyDays: 30 });
 
   const [groupSearchTerm, setGroupSearchTerm] = useState('');
@@ -2124,6 +2133,37 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
   useEffect(() => {
     setEditPenaltySettings(penaltySettings);
   }, [penaltySettings]);
+
+  // ★ ガバナンス・分析データ（DX指標）の計算
+  const governanceStats = useMemo(() => {
+    const resInMonth = reservations.filter(r => r.date.startsWith(usageMonth));
+    const validResInMonth = resInMonth.filter(r => r.status !== 'cancelled');
+    const cancelledResInMonth = resInMonth.filter(r => r.status === 'cancelled');
+
+    const totalValidCount = validResInMonth.length;
+    let totalValidHours = 0;
+    validResInMonth.forEach(r => {
+      totalValidHours += calculateDurationMinutes(r.startTime, r.endTime) / 60;
+    });
+
+    const penaltyGivenCount = groups.reduce((acc, g) => acc + (g.penaltyCount > 0 ? 1 : 0), 0);
+    const cancelRate = resInMonth.length > 0 ? Math.round((cancelledResInMonth.length / resInMonth.length) * 100) : 0;
+
+    // 占有率上位3団体
+    const groupHours = {};
+    validResInMonth.forEach(r => {
+      groupHours[r.groupId] = (groupHours[r.groupId] || 0) + (calculateDurationMinutes(r.startTime, r.endTime) / 60);
+    });
+    const top3 = Object.entries(groupHours)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([gid, hours]) => {
+        const group = groups.find(g => g.id === gid);
+        return { name: group ? group.name : '不明', hours, percentage: totalValidHours > 0 ? Math.round((hours / totalValidHours) * 100) : 0 };
+      });
+
+    return { totalValidCount, totalValidHours: totalValidHours.toFixed(1), cancelRate, penaltyGivenCount, top3 };
+  }, [reservations, groups, usageMonth]);
 
   const handleUpdateAnnouncement = async () => {
     try {
@@ -2586,7 +2626,7 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
         </div>
 
         {/* 1.5 ペナルティ日数設定 */}
-        <div className="bg-white p-6 rounded-[2rem] border-2 border-red-50 shadow-xl space-y-4">
+        <div className="bg-white p-6 rounded-[2rem] border-2 border-red-50 shadow-xl space-y-4 lg:col-span-2">
           <h3 className="font-bold text-lg flex items-center text-red-900"><AlertOctagon className="h-5 w-5 mr-2" /> ペナルティ（予約停止）日数の設定</h3>
           <p className="text-[10px] font-bold text-gray-500">当日・無断キャンセルを繰り返した団体に対する自動予約停止日数を設定します。</p>
           <div className="space-y-4 pt-2">
@@ -2601,50 +2641,116 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
           </div>
         </div>
 
-        {/* 2. 月間利用状況の可視化セクション */}
-        <div className="bg-white p-6 rounded-[2rem] border-2 border-cyan-50 shadow-xl space-y-4">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-cyan-50 pb-4">
+        {/* 2. ★ ガバナンス分析ダッシュボード（DX指標） */}
+        <div className="bg-white p-8 rounded-[2.5rem] border-2 border-cyan-50 shadow-2xl space-y-6 lg:col-span-2 overflow-hidden relative">
+          <div className="absolute top-0 right-0 bg-cyan-100 text-cyan-800 font-black text-[10px] px-4 py-1 rounded-bl-xl border-b border-l border-cyan-200 z-10">
+            DX Governance
+          </div>
+          
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b-2 border-cyan-100 pb-4">
             <div>
-              <h3 className="font-bold text-lg flex items-center text-cyan-900"><BarChart3 className="h-5 w-5 mr-2" /> 団体ごとの月間利用状況</h3>
-              <p className="text-[10px] font-bold text-gray-500 mt-1">※キャンセル済（枠消費中）の時間も含んで集計</p>
+              <h3 className="font-bold text-2xl flex items-center text-cyan-900 tracking-tight"><BarChart3 className="h-6 w-6 mr-3 text-cyan-500" /> ガバナンス分析ダッシュボード</h3>
+              <p className="text-[11px] font-bold text-gray-500 mt-1">システムの健全な利用と公平性が担保されているかを可視化します。</p>
             </div>
             <input 
               type="month" 
               value={usageMonth} 
               onChange={(e) => setUsageMonth(e.target.value)} 
-              className="border p-2.5 rounded-xl text-sm font-bold bg-gray-50 outline-none focus:border-cyan-500 shadow-sm w-full sm:w-auto" 
+              className="border-2 p-3 rounded-2xl text-sm font-bold bg-gray-50 outline-none focus:bg-white focus:border-cyan-500 shadow-inner w-full sm:w-auto" 
             />
           </div>
-          
-          <div className="space-y-4 max-h-64 overflow-y-auto pr-2 pt-2">
-            {groupUsageStats.map(stat => {
-              const usedHours = (stat.usedMinutes / 60).toFixed(1);
-              let limitHours = stat.limitType === '30' ? 30 : 20;
-              let isUnlimited = stat.limitType === 'unlimited';
-              
-              let percentage = isUnlimited ? (stat.usedMinutes / (30 * 60)) * 100 : (stat.usedMinutes / (limitHours * 60)) * 100;
-              if (percentage > 100) percentage = 100;
 
-              let barColor = "bg-cyan-500";
-              if (!isUnlimited) {
-                if (percentage >= 100) barColor = "bg-red-500";
-                else if (percentage >= 80) barColor = "bg-orange-400";
-              }
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-gradient-to-br from-blue-500 to-blue-700 p-5 rounded-3xl text-white shadow-lg flex flex-col justify-between">
+              <span className="text-[10px] font-black uppercase tracking-widest opacity-80">月間 総予約件数</span>
+              <div className="flex items-baseline mt-2">
+                <span className="text-4xl font-black tracking-tighter">{governanceStats.totalValidCount}</span>
+                <span className="text-sm ml-1 opacity-80 font-bold">件</span>
+              </div>
+            </div>
+            <div className="bg-gradient-to-br from-cyan-500 to-teal-500 p-5 rounded-3xl text-white shadow-lg flex flex-col justify-between">
+              <span className="text-[10px] font-black uppercase tracking-widest opacity-80">月間 総利用時間</span>
+              <div className="flex items-baseline mt-2">
+                <span className="text-4xl font-black tracking-tighter">{governanceStats.totalValidHours}</span>
+                <span className="text-sm ml-1 opacity-80 font-bold">時間</span>
+              </div>
+            </div>
+            <div className="bg-gradient-to-br from-orange-400 to-red-500 p-5 rounded-3xl text-white shadow-lg flex flex-col justify-between">
+              <span className="text-[10px] font-black uppercase tracking-widest opacity-80 flex items-center justify-between">キャンセル率 <Info className="w-3 h-3 opacity-50"/></span>
+              <div className="flex items-baseline mt-2">
+                <span className="text-4xl font-black tracking-tighter">{governanceStats.cancelRate}</span>
+                <span className="text-sm ml-1 opacity-80 font-bold">%</span>
+              </div>
+            </div>
+            <div className="bg-gradient-to-br from-gray-700 to-gray-900 p-5 rounded-3xl text-white shadow-lg flex flex-col justify-between">
+              <span className="text-[10px] font-black uppercase tracking-widest opacity-80 flex items-center justify-between">ペナルティ対象団体 <AlertOctagon className="w-3 h-3 opacity-50"/></span>
+              <div className="flex items-baseline mt-2">
+                <span className="text-4xl font-black tracking-tighter text-red-400">{governanceStats.penaltyGivenCount}</span>
+                <span className="text-sm ml-1 opacity-80 font-bold">団体</span>
+              </div>
+            </div>
+          </div>
 
-              return (
-                <div key={stat.id} className="flex items-center justify-between gap-4 text-sm group">
-                  <div className="w-1/3 font-bold text-gray-700 truncate" title={stat.name}>{stat.name}</div>
-                  <div className="flex-1 bg-gray-100 rounded-full h-3 relative overflow-hidden shadow-inner">
-                    <div className={`absolute top-0 left-0 h-full ${barColor} transition-all duration-500`} style={{ width: `${percentage}%` }}></div>
-                  </div>
-                  <div className="w-1/4 text-right font-black text-gray-700 text-xs flex flex-col items-end">
-                    <span className={percentage >= 100 && !isUnlimited ? 'text-red-600' : ''}>{usedHours}h</span>
-                    <span className="text-[9px] text-gray-400 font-bold">/ {isUnlimited ? '無制限' : `${limitHours}h`}</span>
-                  </div>
-                </div>
-              )
-            })}
-            {groupUsageStats.length === 0 && <p className="text-center text-gray-400 py-4 text-xs font-bold">データがありません</p>}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-6">
+            {/* 上位占有率（公平性の証明） */}
+            <div className="bg-gray-50 rounded-3xl p-6 border border-gray-100 shadow-inner">
+              <h4 className="text-sm font-black text-gray-700 flex items-center mb-6"><Users className="w-4 h-4 mr-2 text-cyan-600"/> 施設占有率 トップ3団体</h4>
+              <div className="space-y-5">
+                {governanceStats.top3.length === 0 ? (
+                  <p className="text-xs text-gray-400 font-bold text-center py-4">データがありません</p>
+                ) : (
+                  governanceStats.top3.map((g, i) => (
+                    <div key={i} className="relative">
+                      <div className="flex justify-between text-xs font-bold text-gray-600 mb-1">
+                        <span className="truncate pr-4">{i+1}. {g.name}</span>
+                        <span className="whitespace-nowrap">{g.percentage}% ({g.hours.toFixed(1)}h)</span>
+                      </div>
+                      <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${i === 0 ? 'bg-cyan-500' : i === 1 ? 'bg-blue-400' : 'bg-indigo-300'}`} style={{ width: `${g.percentage}%` }}></div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+              <p className="text-[9px] text-gray-400 font-bold mt-6 text-center leading-relaxed">
+                ※システムによる上限制御（月間20h）により、<br/>特定団体による独占利用が防がれています。
+              </p>
+            </div>
+
+            {/* 団体ごとの詳細利用状況バー */}
+            <div className="space-y-4">
+              <h4 className="text-sm font-black text-gray-700 flex items-center mb-4"><Filter className="w-4 h-4 mr-2 text-cyan-600"/> 全団体の利用枠消化状況</h4>
+              <div className="max-h-52 overflow-y-auto pr-2 space-y-4">
+                {groupUsageStats.map(stat => {
+                  const usedHours = (stat.usedMinutes / 60).toFixed(1);
+                  let limitHours = stat.limitType === '30' ? 30 : 20;
+                  let isUnlimited = stat.limitType === 'unlimited';
+                  
+                  let percentage = isUnlimited ? (stat.usedMinutes / (30 * 60)) * 100 : (stat.usedMinutes / (limitHours * 60)) * 100;
+                  if (percentage > 100) percentage = 100;
+
+                  let barColor = "bg-cyan-400";
+                  if (!isUnlimited) {
+                    if (percentage >= 100) barColor = "bg-red-500";
+                    else if (percentage >= 80) barColor = "bg-orange-400";
+                  }
+
+                  return (
+                    <div key={stat.id} className="flex items-center justify-between gap-4 text-xs group">
+                      <div className="w-2/5 font-bold text-gray-600 truncate" title={stat.name}>{stat.name}</div>
+                      <div className="flex-1 bg-gray-100 rounded-full h-1.5 relative overflow-hidden">
+                        <div className={`absolute top-0 left-0 h-full ${barColor} transition-all duration-500`} style={{ width: `${percentage}%` }}></div>
+                      </div>
+                      <div className="w-1/4 text-right font-black text-gray-600 flex flex-col items-end">
+                        <span className={percentage >= 100 && !isUnlimited ? 'text-red-500' : ''}>{usedHours}h</span>
+                        <span className="text-[8px] text-gray-400 font-bold">/ {isUnlimited ? '無制限' : `${limitHours}h`}</span>
+                      </div>
+                    </div>
+                  )
+                })}
+                {groupUsageStats.length === 0 && <p className="text-center text-gray-400 py-4 text-xs font-bold">データがありません</p>}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -2871,12 +2977,6 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                               const end = END_TIMES[cIndex];
                               const isLastSlot = cIndex === TIME_SLOTS.length - 1;
 
-                              if (isClosed) {
-                                cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''} bg-gray-200/50 bg-[repeating-linear-gradient(45deg,transparent,transparent_2px,rgba(0,0,0,0.1)_2px,rgba(0,0,0,0.1)_4px)]`}></td>);
-                                cIndex++;
-                                continue;
-                              }
-
                               const matchingRes = reservations.find(r => {
                                 if (r.date !== d || r.status === 'cancelled') return false;
                                 if (!isTimeOverlapping(start, end, r.startTime, r.endTime)) return false;
@@ -2921,7 +3021,7 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                               } else {
                                 const isRestricted = isWeekendOrHoliday(d) && start >= "17:00";
                                 if (isClosed || isRestricted) {
-                                  cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''} bg-gray-300/60 bg-[repeating-linear-gradient(45deg,transparent,transparent_2px,rgba(0,0,0,0.1)_2px,rgba(0,0,0,0.1)_4px)]`}></td>);
+                                  cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''} bg-[repeating-linear-gradient(45deg,rgba(0,0,0,0.05),rgba(0,0,0,0.05)_4px,rgba(0,0,0,0.1)_4px,rgba(0,0,0,0.1)_8px)]`}></td>);
                                 } else {
                                   cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''}`}></td>);
                                 }
@@ -2954,7 +3054,6 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
   );
 }
 
-// --- 月間予定表プレビュー（タイムライン形式に修正） ---
 function MonthlyPrintView({ reservations, closedDays, monthStr, onBack }) {
   const [yearStr, mStr] = monthStr.split('-');
   const year = parseInt(yearStr);
@@ -3050,12 +3149,6 @@ function MonthlyPrintView({ reservations, closedDays, monthStr, onBack }) {
                               const end = END_TIMES[cIndex];
                               const isLastSlot = cIndex === TIME_SLOTS.length - 1;
 
-                              if (isClosed) {
-                                cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''} bg-gray-200/50 bg-[repeating-linear-gradient(45deg,transparent,transparent_2px,rgba(0,0,0,0.1)_2px,rgba(0,0,0,0.1)_4px)]`}></td>);
-                                cIndex++;
-                                continue;
-                              }
-
                               const matchingRes = reservations.find(r => {
                                 if (r.date !== d || r.status === 'cancelled') return false;
                                 if (!isTimeOverlapping(start, end, r.startTime, r.endTime)) return false;
@@ -3100,7 +3193,7 @@ function MonthlyPrintView({ reservations, closedDays, monthStr, onBack }) {
                               } else {
                                 const isRestricted = isWeekendOrHoliday(d) && start >= "17:00";
                                 if (isClosed || isRestricted) {
-                                  cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''} bg-gray-300/60 bg-[repeating-linear-gradient(45deg,transparent,transparent_2px,rgba(0,0,0,0.1)_2px,rgba(0,0,0,0.1)_4px)]`}></td>);
+                                  cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''} bg-[repeating-linear-gradient(45deg,rgba(0,0,0,0.05),rgba(0,0,0,0.05)_4px,rgba(0,0,0,0.1)_4px,rgba(0,0,0,0.1)_8px)]`}></td>);
                                 } else {
                                   cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''}`}></td>);
                                 }
@@ -3192,10 +3285,10 @@ function RulesView() {
               </p>
               <div className="bg-white p-4 rounded-2xl border border-red-100 text-xs font-bold text-gray-700 space-y-2">
                 <div className="text-red-600 font-black mb-1 border-b border-red-100 pb-1">■ ペナルティ対象</div>
-                <p>・前日、当日、無断でのキャンセル</p>
+                <p>・当日キャンセル・無断キャンセル</p>
                 <p className="text-[10px] text-gray-500 leading-relaxed mt-1">
-                  ※2日前までのキャンセルはペナルティ対象外です。<br/>
-                  ※前日以降のキャンセルであっても、予約後1時間以内の取り消しであれば、間違い防止のためペナルティは課されません。
+                  ※前日までのキャンセルはペナルティ対象外です。<br/>
+                  ※当日・無断キャンセルであっても、予約後1時間以内の取り消しであれば、間違い防止のためペナルティは課されません。
                 </p>
               </div>
               <div className="bg-white p-4 rounded-2xl border border-red-100 text-xs font-bold text-gray-700 space-y-2">
