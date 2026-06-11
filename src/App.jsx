@@ -2168,7 +2168,12 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
       .slice(0, 3)
       .map(([gid, hours]) => {
         const group = groups.find(g => g.id === gid);
-        return { name: group ? group.name : '不明', hours, percentage: totalValidHours > 0 ? Math.round((hours / totalValidHours) * 100) : 0 };
+        return { 
+          name: group ? group.name : '不明', 
+          authId: group ? group.authId : '-',
+          hours, 
+          percentage: totalValidHours > 0 ? Math.round((hours / totalValidHours) * 100) : 0 
+        };
       });
 
     return { totalValidCount, totalValidHours: totalValidHours.toFixed(1), cancelRate, penaltyGivenCount, top3 };
@@ -2232,6 +2237,7 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
     const stats = groups.map(g => ({
       id: g.id,
       name: g.name,
+      authId: g.authId,
       type: g.type,
       limitType: g.limitType || (g.isExemptFromLimit ? 'unlimited' : '20'),
       usedMinutes: 0
@@ -2738,7 +2744,7 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
                   governanceStats.top3.map((g, i) => (
                     <div key={i} className="relative">
                       <div className="flex justify-between text-xs font-bold text-gray-600 mb-1">
-                        <span className="truncate pr-4">{i+1}. {g.name}</span>
+                        <span className="truncate pr-4">{i+1}. <span className="text-[10px] text-gray-400 mr-1">[{g.authId}]</span>{g.name}</span>
                         <span className="whitespace-nowrap">{g.percentage}% ({g.hours.toFixed(1)}h)</span>
                       </div>
                       <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
@@ -2773,7 +2779,10 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
 
                   return (
                     <div key={stat.id} className="flex items-center justify-between gap-4 text-xs group">
-                      <div className="w-2/5 font-bold text-gray-600 truncate" title={stat.name}>{stat.name}</div>
+                      <div className="w-2/5 font-bold text-gray-600 truncate" title={`${stat.name} (${stat.authId})`}>
+                        <span className="text-[9px] text-gray-400 mr-1">[{stat.authId}]</span>
+                        {stat.name}
+                      </div>
                       <div className="flex-1 bg-gray-100 rounded-full h-1.5 relative overflow-hidden">
                         <div className={`absolute top-0 left-0 h-full ${barColor} transition-all duration-500`} style={{ width: `${percentage}%` }}></div>
                       </div>
@@ -2894,7 +2903,9 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
                     </span>
                   )}
                 </div>
-                <div className="text-sm font-bold text-gray-600">{res.place} {res.courts ? `(${Array.isArray(res.courts) ? res.courts.join(', ') : res.courts})` : ''} | {res.name}</div>
+                <div className="text-sm font-bold text-gray-600">
+                  {res.place} {res.courts ? `(${Array.isArray(res.courts) ? res.courts.join(', ') : res.courts})` : ''} | <span className="text-[10px] text-gray-400 mr-1">[{groups.find(g => g.id === res.groupId)?.authId || '-'}]</span>{res.name}
+                </div>
                 <div className="text-xs text-gray-400 italic">目的: {res.purpose} | {res.userCount}名</div>
               </div>
               <div className="flex flex-row md:flex-col gap-2 min-w-[140px]">
