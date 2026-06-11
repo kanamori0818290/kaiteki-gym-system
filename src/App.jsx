@@ -1460,7 +1460,7 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
       const penaltyEnd = new Date(selectedGroupData.penaltyUntil);
       if (penaltyEnd > new Date()) {
         const endStr = formatDateStr(penaltyEnd);
-        return alert(`【予約停止のお知らせ】\nペナルティにより、${endStr}まで新規予約が停止されています。\n※災害等による免除申請漏れの場合は、管理者へご連絡ください。`);
+        return alert(`【予約停止のお知らせ】\n当日または無断キャンセルのペナルティにより、${endStr}まで新規予約が停止されています。\n※災害等による免除申請漏れの場合は、管理者へご連絡ください。`);
       }
     }
 
