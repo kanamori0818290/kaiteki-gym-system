@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban, AlertOctagon, Edit2, RotateCcw, Filter, Unlock, BarChart3, Megaphone, MessageSquare, MousePointerClick, UserCircle } from 'lucide-react';
+import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban, AlertOctagon, Edit2, RotateCcw, Filter, Unlock, BarChart3, Megaphone, MessageSquare, MousePointerClick } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, writeBatch, setDoc } from 'firebase/firestore';
 
 // --- Firebase 設定 ---
-const defaultFirebaseConfig = {
+const firebaseConfig = {
   apiKey: "AIzaSyCTDD_TMng6EclbLiMoc7-36QRowhQrvew",
   authDomain: "kaiteki-gym.firebaseapp.com",
   projectId: "kaiteki-gym",
@@ -13,14 +13,16 @@ const defaultFirebaseConfig = {
   messagingSenderId: "88315814584",
   appId: "1:88315814584:web:14eb104398bb05cf0bca4d"
 };
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : defaultFirebaseConfig;
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'kaiteki-gym-production-v3';
-const appId = String(rawAppId).replace(/\//g, '-');
+const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'kaiteki-gym-production-v2';
+const safeAppId = String(rawAppId).replace(/\//g, '-');
 
+// ★アクセス保護用の共通パスワード
+const PORTAL_PASSWORD = "kaiteki-user";
 const ADMIN_CC_EMAIL = "MCJP-DG-RIX_TOYAMA_TAIIKUKAN@mchcgr.com";
 
 // --- 初期登録団体リスト ---
@@ -128,19 +130,37 @@ const generateHolidaysForYear = (year) => {
     hols.push(`${yStr}-${mStr}-${dStr}`);
   };
   
-  add(1, 1); add(2, 11); add(2, 23); add(4, 29); add(5, 3); add(5, 4); add(5, 5); add(8, 11); add(11, 3); add(11, 23);
+  // 固定の祝日
+  add(1, 1); // 元日
+  add(2, 11); // 建国記念の日
+  add(2, 23); // 天皇誕生日
+  add(4, 29); // 昭和の日
+  add(5, 3); // 憲法記念日
+  add(5, 4); // みどりの日
+  add(5, 5); // こどもの日
+  add(8, 11); // 山の日
+  add(11, 3); // 文化の日
+  add(11, 23); // 勤労感謝の日
+  
+  // 春分・秋分
   add(3, getSpringEquinox(year));
   const autumnEquinox = getAutumnEquinox(year);
   add(9, autumnEquinox);
   
-  const adultDay = getNthMonday(year, 1, 2); add(adultDay.getMonth() + 1, adultDay.getDate());
-  const marineDay = getNthMonday(year, 7, 3); add(marineDay.getMonth() + 1, marineDay.getDate());
-  const keiroDay = getNthMonday(year, 9, 3); add(keiroDay.getMonth() + 1, keiroDay.getDate());
-  const sportsDay = getNthMonday(year, 10, 2); add(sportsDay.getMonth() + 1, sportsDay.getDate());
+  // ハッピーマンデー
+  const adultDay = getNthMonday(year, 1, 2);
+  add(adultDay.getMonth() + 1, adultDay.getDate());
+  const marineDay = getNthMonday(year, 7, 3);
+  add(marineDay.getMonth() + 1, marineDay.getDate());
+  const keiroDay = getNthMonday(year, 9, 3);
+  add(keiroDay.getMonth() + 1, keiroDay.getDate());
+  const sportsDay = getNthMonday(year, 10, 2);
+  add(sportsDay.getMonth() + 1, sportsDay.getDate());
 
   hols.sort();
   const finalHols = new Set(hols);
   
+  // 振替休日の計算
   hols.forEach(hDateStr => {
     const d = new Date(hDateStr);
     if (d.getDay() === 0) {
@@ -156,6 +176,7 @@ const generateHolidaysForYear = (year) => {
     }
   });
 
+  // 国民の休日
   const keiroDate = keiroDay.getDate();
   if (autumnEquinox - keiroDate === 2) {
     const natHol = new Date(year, 8, keiroDate + 1);
@@ -184,8 +205,8 @@ const isWeekendOrHoliday = (dateStr) => {
   if (!dateStr) return false;
   const d = new Date(dateStr);
   const day = d.getDay();
-  if (day === 0 || day === 6) return true;
-  return isHoliday(dateStr);
+  if (day === 0 || day === 6) return true; // 土日
+  return isHoliday(dateStr); // または祝日
 };
 
 // --- ペナルティ判定関数 ---
@@ -193,6 +214,7 @@ const isPenaltyTarget = (res) => {
   const now = new Date();
   const createdAt = new Date(res.createdAt);
   
+  // 1時間以内は免除
   if (now.getTime() - createdAt.getTime() <= 60 * 60 * 1000) return false;
   
   const todayZero = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -497,7 +519,7 @@ function EditReservationModal({ reservation, groups, allReservations, isAdmin, o
 
     setIsSubmitting(true);
     try {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'reservations', reservation.id), {
+      await updateDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', reservation.id), {
         startTime,
         endTime,
         place: facilities.join(', '),
@@ -600,13 +622,8 @@ export default function App() {
   const [emailInput, setEmailInput] = useState('');
   const [passInput, setPassInput] = useState('');
   
-  // ★ ログイン関連ステート
-  const [portalIdInput, setPortalIdInput] = useState('');
-  const [portalPassInput, setPortalPassInput] = useState('');
-  const [loggedInGroup, setLoggedInGroup] = useState(null);
-
   const [user, setUser] = useState(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const isAdmin = !!(user && user.email); 
 
   const [reservations, setReservations] = useState([]);
   const [closedDays, setClosedDays] = useState([]);
@@ -663,7 +680,7 @@ export default function App() {
   }, [lockoutUntil]);
 
   useEffect(() => {
-    if (!user) {
+    if (!user || (!isAdmin && !isPortalAuthorized)) {
         setIsLoading(false);
         return;
     }
@@ -673,72 +690,61 @@ export default function App() {
       setIsLoading(false);
     }, 5000);
 
-    // ★ groups はログイン前（認証画面）でも検索に使うため、常に取得しておく
-    const groupsRef = collection(db, 'artifacts', appId, 'public', 'data', 'groups');
+    const resRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'reservations');
+    const unsubRes = onSnapshot(resRef, (snapshot) => {
+      clearTimeout(fallbackTimer);
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setReservations(data);
+      setIsLoading(false);
+    }, (err) => { 
+      clearTimeout(fallbackTimer);
+      console.error(err);
+      setIsLoading(false); 
+    });
+
+    const closedRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'closed_days');
+    const unsubClosed = onSnapshot(closedRef, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setClosedDays(data);
+    }, (err) => console.error(err));
+
+    const groupsRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'groups');
     const unsubGroups = onSnapshot(groupsRef, (snapshot) => {
       if (snapshot.empty) {
-        // 初期データの投入（パスワードは一律 'kaiteki-user'）
-        const batch = writeBatch(db);
-        INITIAL_GROUPS.forEach(g => {
-          const docRef = doc(groupsRef);
-          batch.set(docRef, { ...g, password: 'kaiteki-user', createdAt: new Date().toISOString() });
-        });
-        batch.commit().catch(err => console.error(err));
+        if (isAdmin) {
+          const batch = writeBatch(db);
+          INITIAL_GROUPS.forEach(g => {
+            const docRef = doc(groupsRef);
+            batch.set(docRef, { ...g, createdAt: new Date().toISOString() });
+          });
+          batch.commit().catch(err => console.error(err));
+        }
       } else {
         const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setGroups(data.sort((a,b) => a.name.localeCompare(b.name, 'ja')));
       }
     }, (err) => console.error(err));
 
-    let unsubRes = () => {};
-    let unsubClosed = () => {};
-    let unsubReports = () => {};
-    let unsubAnnounce = () => {};
-    let unsubPenSettings = () => {};
+    const reportsRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'reports');
+    const unsubReports = onSnapshot(reportsRef, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setReports(data);
+    }, (err) => console.error(err));
 
-    // ログイン後（または管理者）のみ取得するデータ
-    if (isAdmin || isPortalAuthorized) {
-      const resRef = collection(db, 'artifacts', appId, 'public', 'data', 'reservations');
-      unsubRes = onSnapshot(resRef, (snapshot) => {
-        clearTimeout(fallbackTimer);
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setReservations(data);
-        setIsLoading(false);
-      }, (err) => { 
-        clearTimeout(fallbackTimer);
-        setIsLoading(false); 
-      });
+    const announceRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'system_messages', 'announcement');
+    const unsubAnnounce = onSnapshot(announceRef, (docSnap) => {
+      if (docSnap.exists()) setAnnouncementText(docSnap.data().text || '');
+      else setAnnouncementText('');
+    }, (err) => console.error(err));
 
-      const closedRef = collection(db, 'artifacts', appId, 'public', 'data', 'closed_days');
-      unsubClosed = onSnapshot(closedRef, (snapshot) => {
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setClosedDays(data);
-      }, (err) => console.error(err));
-
-      const reportsRef = collection(db, 'artifacts', appId, 'public', 'data', 'reports');
-      unsubReports = onSnapshot(reportsRef, (snapshot) => {
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setReports(data);
-      }, (err) => console.error(err));
-
-      const announceRef = doc(db, 'artifacts', appId, 'public', 'data', 'system_messages', 'announcement');
-      unsubAnnounce = onSnapshot(announceRef, (docSnap) => {
-        if (docSnap.exists()) setAnnouncementText(docSnap.data().text || '');
-        else setAnnouncementText('');
-      }, (err) => console.error(err));
-
-      const penSettingsRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'penalty');
-      unsubPenSettings = onSnapshot(penSettingsRef, (docSnap) => {
-        if (docSnap.exists()) setPenaltySettings({ secondPenaltyDays: docSnap.data().secondPenaltyDays || 30 });
-      }, (err) => console.error(err));
-    } else {
-      setIsLoading(false);
-      clearTimeout(fallbackTimer);
-    }
+    const penSettingsRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'settings', 'penalty');
+    const unsubPenSettings = onSnapshot(penSettingsRef, (docSnap) => {
+      if (docSnap.exists()) setPenaltySettings({ secondPenaltyDays: docSnap.data().secondPenaltyDays || 30 });
+    }, (err) => console.error(err));
 
     return () => {
       clearTimeout(fallbackTimer);
-      unsubGroups(); unsubRes(); unsubClosed(); unsubReports(); unsubAnnounce(); unsubPenSettings();
+      unsubRes(); unsubClosed(); unsubGroups(); unsubReports(); unsubAnnounce(); unsubPenSettings();
     };
   }, [user, isAdmin, isPortalAuthorized]);
 
@@ -759,6 +765,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // ★ URLハッシュと隠しショートカットの監視
   useEffect(() => {
     const checkHash = () => {
       if (window.location.hash === '#admin') {
@@ -767,6 +774,7 @@ export default function App() {
     };
     checkHash();
     window.addEventListener('hashchange', checkHash);
+
     const handleKeyDown = (e) => {
       if (e.altKey && e.key.toLowerCase() === 'a') {
         setShowLoginModal(true);
@@ -789,15 +797,9 @@ export default function App() {
     e.preventDefault();
     if (lockoutUntil && lockoutUntil > Date.now()) return;
 
-    // ★ 団体IDとパスワードの照合 (未設定の場合はデフォルトで 'kaiteki-user' とする)
-    const group = groups.find(g => 
-      g.authId === portalIdInput.trim().toUpperCase() && 
-      (g.password === portalPassInput || (!g.password && portalPassInput === 'kaiteki-user'))
-    );
-
-    if (group) {
+    const input = e.target.portalPass.value;
+    if (input === PORTAL_PASSWORD) {
       setIsPortalAuthorized(true);
-      setLoggedInGroup(group);
       setLoginAttempts(0);
       setLockoutUntil(null);
       localStorage.removeItem('gym_login_attempts');
@@ -813,24 +815,19 @@ export default function App() {
         localStorage.setItem('gym_lockout_until', lockoutTime);
         alert(`パスワードを${MAX_ATTEMPTS}回間違えたため、5分間ロックされました。`);
       } else {
-        alert(`ログインIDまたはパスワードが正しくありません。\n（あと${MAX_ATTEMPTS - newAttempts}回間違えるとロックされます）`);
+        alert(`パスワードが正しくありません。（あと${MAX_ATTEMPTS - newAttempts}回間違えるとロックされます）`);
       }
     }
   };
 
   const handleAdminLogin = async (e) => {
     e.preventDefault();
-    // プレビュー環境での動作確認用。本番では signInWithEmailAndPassword を使用します。
-    if (passInput === "admin") {
-      setShowLoginModal(false); 
-      setEmailInput(''); 
-      setPassInput('');
-      setActiveTab('admin'); 
-      setIsPortalAuthorized(true);
-      setIsAdmin(true);
-      setLoggedInGroup(null);
+    try {
+      await signInWithEmailAndPassword(auth, emailInput, passInput);
+      setShowLoginModal(false); setEmailInput(''); setPassInput('');
+      setActiveTab('admin'); setIsPortalAuthorized(true);
       showToast('管理者としてログインしました');
-    } else {
+    } catch (error) {
       alert('メールアドレスまたはパスワードが正しくありません。');
     }
   };
@@ -838,22 +835,17 @@ export default function App() {
   const handleAdminLogout = async () => {
     try {
       await signOut(auth);
-      // ログアウト後は再度、セキュアなルール適合のためにアノニマスログインを自動実行
       await signInAnonymously(auth);
-      setIsAdmin(false);
-      setActiveTab('calendar'); 
-      setIsPortalAuthorized(false); 
-      setLoggedInGroup(null);
+      setActiveTab('calendar'); setIsPortalAuthorized(false);
       showToast('ログアウトしました');
-    } catch (error) {
-      console.error(error);
-    }
+    } catch (error) {}
   };
 
   const handleCalendarDelete = async (targetRes) => {
-    // ★ 管理者以外は自分の団体の予約しかキャンセルできない前提のため、パスワード確認を廃止
-    if (!isAdmin && targetRes.groupId !== loggedInGroup?.id) {
-       return alert("他の団体の予約はキャンセルできません。");
+    if (!isAdmin) {
+      const inputPass = window.prompt(`【${targetRes.name}】の予約を取り消します。\n予約時に設定した「取消用パスワード」を入力してください：`);
+      if (inputPass === null) return;
+      if (inputPass !== targetRes.deletePass) return alert("パスワードが正しくありません。");
     }
 
     const willPenalty = isPenaltyTarget(targetRes);
@@ -874,7 +866,7 @@ export default function App() {
 
     try {
       const batch = writeBatch(db);
-      const resRef = doc(db, 'artifacts', appId, 'public', 'data', 'reservations', targetRes.id);
+      const resRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', targetRes.id);
       batch.update(resRef, { 
         status: 'cancelled',
         cancelReason: isExemptChecked ? '災害等による特例免除' : '自己都合(カレンダーから)'
@@ -883,7 +875,7 @@ export default function App() {
       if (willPenalty && !isExemptChecked) {
         const targetGroup = groups.find(g => g.id === targetRes.groupId);
         if (targetGroup) {
-          const groupRef = doc(db, 'artifacts', appId, 'public', 'data', 'groups', targetGroup.id);
+          const groupRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'groups', targetGroup.id);
           const currentCount = targetGroup.penaltyCount || 0;
           const newCount = currentCount + 1;
           let pDays = newCount === 1 ? 0 : (penaltySettings.secondPenaltyDays || 30);
@@ -902,8 +894,10 @@ export default function App() {
   };
 
   const handleCalendarEdit = (targetRes) => {
-    if (!isAdmin && targetRes.groupId !== loggedInGroup?.id) {
-       return alert("他の団体の予約は変更できません。");
+    if (!isAdmin) {
+      const inputPass = window.prompt(`【${targetRes.name}】の予約内容を変更します。\n予約時に設定した「取消用パスワード」を入力してください：`);
+      if (inputPass === null) return;
+      if (inputPass !== targetRes.deletePass) return alert("パスワードが正しくありません。");
     }
     setEditingReservation(targetRes);
   };
@@ -919,12 +913,12 @@ export default function App() {
               onDoubleClick={() => setShowLoginModal(true)}
               style={{ WebkitTapHighlightColor: 'transparent' }}
             >
-              {isLocked ? <Lock className="h-12 w-12" /> : <UserCircle className="h-12 w-12" />}
+              {isLocked ? <Lock className="h-12 w-12" /> : <KeyRound className="h-12 w-12" />}
             </div>
           </div>
           <div className="space-y-2">
             <h1 className="text-3xl font-black text-blue-950">KAITEKIケミカル体育館</h1>
-            <p className="text-gray-500 font-bold">予約システム 利用者ログイン</p>
+            <p className="text-gray-500 font-bold">予約システム アクセス認証</p>
           </div>
           
           {isLocked ? (
@@ -937,34 +931,24 @@ export default function App() {
              </div>
           ) : (
             <form onSubmit={handlePortalLogin} className="space-y-6">
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block text-left px-4">ログインID (団体ID)</label>
+              <div className="space-y-2">
+                <label className="text-xs font-black text-gray-400 uppercase tracking-widest block text-left px-4">利用パスワード</label>
                 <input 
-                  type="text" 
-                  required 
-                  value={portalIdInput}
-                  onChange={e => setPortalIdInput(e.target.value)}
-                  className="w-full bg-gray-50 border-4 border-transparent focus:border-blue-500 focus:bg-white p-4 rounded-[2rem] text-center text-xl font-bold tracking-widest outline-none transition-all shadow-inner uppercase" 
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block text-left px-4">パスワード</label>
-                <input 
+                  name="portalPass"
                   type="password" 
                   required 
-                  value={portalPassInput}
-                  onChange={e => setPortalPassInput(e.target.value)}
-                  className="w-full bg-gray-50 border-4 border-transparent focus:border-blue-500 focus:bg-white p-4 rounded-[2rem] text-center text-xl tracking-[0.3em] outline-none transition-all shadow-inner" 
+                  autoFocus
+                  className="w-full bg-gray-50 border-4 border-transparent focus:border-blue-500 focus:bg-white p-5 rounded-[2rem] text-center text-2xl tracking-[0.3em] outline-none transition-all shadow-inner" 
+                  placeholder="••••••" 
                 />
               </div>
-
               {loginAttempts > 0 && (
                 <p className="text-xs font-bold text-red-500 text-left px-4 animate-pulse">
                   ※ あと {MAX_ATTEMPTS - loginAttempts} 回間違えるとロックされます
                 </p>
               )}
               <button type="submit" className="w-full bg-blue-600 text-white py-5 rounded-[2rem] font-black text-xl hover:bg-blue-700 shadow-xl transition-all active:scale-95">
-                ログインしてシステムに入る
+                システムに入る
               </button>
             </form>
           )}
@@ -975,23 +959,8 @@ export default function App() {
             <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-sm">
               <h3 className="text-xl font-bold mb-6 flex items-center text-blue-800"><ShieldCheck className="mr-3 h-6 w-6"/>管理者ログイン</h3>
               <form onSubmit={handleAdminLogin}>
-                <input 
-                  type="email" 
-                  autoFocus 
-                  value={emailInput} 
-                  onChange={(e) => setEmailInput(e.target.value)} 
-                  required 
-                  className="w-full border-2 border-gray-100 p-3 rounded-xl mb-4 text-sm font-bold focus:border-blue-500 outline-none transition-all shadow-inner" 
-                  placeholder="管理者メールアドレス" 
-                />
-                <input 
-                  type="password" 
-                  value={passInput} 
-                  onChange={(e) => setPassInput(e.target.value)} 
-                  required 
-                  className="w-full border-2 border-gray-100 p-3 rounded-xl mb-6 text-center text-lg tracking-widest focus:border-blue-500 outline-none transition-all shadow-inner" 
-                  placeholder="パスワード" 
-                />
+                <input type="email" autoFocus value={emailInput} onChange={(e) => setEmailInput(e.target.value)} required className="w-full border-2 border-gray-100 p-3 rounded-xl mb-4 text-sm font-bold focus:border-blue-500 outline-none transition-all shadow-inner" placeholder="管理者メールアドレス" />
+                <input type="password" value={passInput} onChange={(e) => setPassInput(e.target.value)} required className="w-full border-2 border-gray-100 p-3 rounded-xl mb-6 text-center text-lg tracking-widest focus:border-blue-500 outline-none transition-all shadow-inner" placeholder="パスワード" />
                 <div className="flex space-x-3">
                   <button type="button" onClick={() => setShowLoginModal(false)} className="flex-1 text-gray-500 py-2 font-bold hover:bg-gray-100 rounded-xl transition-colors">閉じる</button>
                   <button type="submit" className="flex-1 bg-blue-600 text-white py-2 rounded-xl font-bold hover:bg-blue-700 shadow-md transition-all active:scale-95">ログイン</button>
@@ -1013,26 +982,16 @@ export default function App() {
             <div>
               <div className="flex items-center">
                 <h1 
-                  className="text-xl font-bold tracking-tight mr-3 font-bold select-none cursor-default"
+                  className="text-xl font-bold tracking-tight mr-2 font-bold select-none cursor-default"
                   onDoubleClick={() => !isAdmin && setShowLoginModal(true)}
                 >
                   KAITEKIケミカル体育館
                 </h1>
-                {isAdmin ? (
-                  <div className="flex items-center gap-2">
-                    <span className="bg-yellow-400 text-yellow-900 text-[10px] px-2 py-0.5 rounded-full font-black">管理者</span>
-                    <button onClick={handleAdminLogout} className="flex items-center text-[10px] bg-gray-200 text-gray-700 px-3 py-1 rounded-full font-bold hover:bg-gray-300 shadow-sm">
-                      <LogOut className="h-3 w-3 mr-1" />ログアウト
-                    </button>
-                  </div>
-                ) : isPortalAuthorized && loggedInGroup ? (
-                  <div className="flex items-center gap-2">
-                    <span className="bg-blue-100 text-blue-800 text-[10px] px-2 py-0.5 rounded-full font-black truncate max-w-[150px]">{loggedInGroup.name}</span>
-                    <button onClick={() => {setIsPortalAuthorized(false); setLoggedInGroup(null);}} className="flex items-center text-[10px] bg-white/20 text-white px-3 py-1 rounded-full font-bold hover:bg-white/30 shadow-sm">
-                      <LogOut className="h-3 w-3 mr-1" />ログアウト
-                    </button>
-                  </div>
-                ) : null}
+                {isAdmin && (
+                  <button onClick={handleAdminLogout} className="flex items-center text-[10px] bg-red-600 px-3 py-1 rounded-full font-bold hover:bg-red-700 shadow">
+                    <LogOut className="h-3 w-3 mr-1" />解除
+                  </button>
+                )}
               </div>
               <p className="text-[10px] text-blue-200 opacity-80 font-bold">三菱ケミカル / リックスビジネスパートナーズ㈱</p>
             </div>
@@ -1071,7 +1030,6 @@ export default function App() {
                 reservations={reservations} 
                 closedDays={closedDays}
                 isAdmin={isAdmin}
-                loggedInGroup={loggedInGroup}
                 onEditClick={handleCalendarEdit}
                 onDeleteClick={handleCalendarDelete}
                 onReserveClick={(d) => {setPreSelectedDate(d); setActiveTab('reserve');}} 
@@ -1084,13 +1042,11 @@ export default function App() {
                 closedDays={closedDays}
                 groups={groups}
                 user={user} 
-                loggedInGroup={loggedInGroup}
-                isAdmin={isAdmin}
                 onSuccess={(msg) => {showToast(msg || '予約が完了しました。'); setActiveTab('calendar');}} 
               />
             )}
-            {activeTab === 'cancel' && <CancelView reservations={reservations} groups={groups} penaltySettings={penaltySettings} isAdmin={isAdmin} loggedInGroup={loggedInGroup} onSuccess={() => { showToast('予約を取り消しました'); setActiveTab('calendar'); }} />}
-            {activeTab === 'report' && <ReportView groups={groups} user={user} isAdmin={isAdmin} loggedInGroup={loggedInGroup} onSuccess={(msg) => { showToast(msg); setActiveTab('calendar'); }} />}
+            {activeTab === 'cancel' && <CancelView reservations={reservations} groups={groups} penaltySettings={penaltySettings} isAdmin={isAdmin} onSuccess={() => { showToast('予約を取り消しました'); setActiveTab('calendar'); }} />}
+            {activeTab === 'report' && <ReportView groups={groups} user={user} onSuccess={(msg) => { showToast(msg); setActiveTab('calendar'); }} />}
             {activeTab === 'rules' && <RulesView />}
             {activeTab === 'admin' && isAdmin && (
               <AdminDashboard 
@@ -1128,7 +1084,7 @@ export default function App() {
   );
 }
 
-function CalendarView({ reservations, closedDays, isAdmin, loggedInGroup, onEditClick, onDeleteClick, onReserveClick }) {
+function CalendarView({ reservations, closedDays, isAdmin, onEditClick, onDeleteClick, onReserveClick }) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDateStr, setSelectedDateStr] = useState(formatDateStr(new Date()));
   
@@ -1145,11 +1101,13 @@ function CalendarView({ reservations, closedDays, isAdmin, loggedInGroup, onEdit
   const selectedDayReservations = reservations.filter(res => res.date === selectedDateStr && res.status !== 'cancelled');
   const isSelectedDateClosed = closedDays.some(cd => cd.date === selectedDateStr);
 
+  // 本日の予約を取得して安否確認パネルに表示（管理者の場合）
   const todayStr = formatDateStr(new Date());
   const todaysReservations = useMemo(() => {
     return reservations.filter(r => r.date === todayStr && r.status !== 'cancelled');
   }, [reservations, todayStr]);
 
+  // 現在時刻と比べて「利用中」かどうかを判定する関数
   const isCurrentlyUsing = (startTime, endTime) => {
     const now = new Date();
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
@@ -1163,6 +1121,7 @@ function CalendarView({ reservations, closedDays, isAdmin, loggedInGroup, onEdit
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       
+      {/* 🚨 管理者用の緊急時安否確認パネル */}
       {isAdmin && (
         <div className="bg-red-50 rounded-2xl border-[3px] border-red-500 shadow-xl overflow-hidden animate-in slide-in-from-top-4">
           <div className="bg-red-500 text-white p-4 flex items-center justify-between">
@@ -1278,34 +1237,31 @@ function CalendarView({ reservations, closedDays, isAdmin, loggedInGroup, onEdit
             
             {selectedDayReservations.length > 0 ? (
               <div className="space-y-4">
-                {selectedDayReservations.sort((a,b)=>(a.startTime || "").localeCompare(b.startTime || "")).map(res => {
-                   const isOwnReservation = isAdmin || res.groupId === loggedInGroup?.id;
-                   
-                   return (
-                    <div 
-                      key={res.id} 
-                      className={`border-l-8 p-4 rounded-xl shadow transition-all relative group 
-                        ${isOwnReservation ? 'border-orange-500 bg-orange-50/30 hover:scale-[1.02] cursor-pointer' : 'border-blue-500 bg-white'}`}
-                      onClick={() => isOwnReservation && handleCalendarEdit(res)}
-                    >
-                      {isOwnReservation && (
-                        <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
-                          <button onClick={(e) => { e.stopPropagation(); handleCalendarDelete(res); }} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-100 flex items-center shadow-sm transition-colors border border-red-200">
-                            <Trash2 className="w-3 h-3 mr-1" /> 取消
-                          </button>
-                        </div>
-                      )}
-                      <div className="text-base font-bold text-gray-900 mb-1 tracking-tight pr-28">{res.startTime || '--:--'} - {res.endTime || '--:--'}</div>
-                      <div className="text-xs font-bold text-blue-700 my-1 bg-blue-50 px-2 py-0.5 rounded inline-block border border-blue-100">
-                        {res.place} {res.courts ? `(${Array.isArray(res.courts) ? res.courts.join(', ') : res.courts})` : ''}
-                      </div>
-                      <div className="text-[10px] font-bold text-gray-500 border-t pt-2 mt-2 truncate flex items-center gap-2">
-                        <span>団体: <span className="text-gray-700">{res.name}</span></span>
-                        {isOwnReservation && <span className="bg-orange-500 text-white text-[8px] px-1.5 py-0.5 rounded-sm">あなたの予約</span>}
-                      </div>
+                {selectedDayReservations.sort((a,b)=>(a.startTime || "").localeCompare(b.startTime || "")).map(res => (
+                  <div 
+                    key={res.id} 
+                    className="border-l-8 border-blue-500 p-4 rounded-xl shadow bg-white transition-all hover:scale-[1.02] relative group cursor-pointer"
+                  >
+                    <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                      <button onClick={(e) => { e.stopPropagation(); onEditClick(res); }} className="bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-100 flex items-center shadow-sm transition-colors border border-blue-200">
+                        <Edit2 className="w-3 h-3 mr-1" /> 変更
+                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); onDeleteClick(res); }} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-100 flex items-center shadow-sm transition-colors border border-red-200">
+                        <Trash2 className="w-3 h-3 mr-1" /> 取消
+                      </button>
                     </div>
-                  );
-                })}
+                    <div className="text-base font-bold text-gray-900 mb-1 tracking-tight pr-28">{res.startTime || '--:--'} - {res.endTime || '--:--'}</div>
+                    <div className="text-xs font-bold text-blue-700 my-1 bg-blue-50 px-2 py-0.5 rounded inline-block">
+                      {res.place} {res.courts ? `(${Array.isArray(res.courts) ? res.courts.join(', ') : res.courts})` : ''}
+                    </div>
+                    <div className="text-[10px] font-bold text-gray-500 border-t pt-2 mt-2 truncate">
+                      団体: <span className="text-gray-700">{res.name}</span>
+                    </div>
+                    <div className="mt-2 text-[9px] font-black px-3 py-0.5 inline-block rounded-full shadow-sm uppercase bg-blue-600 text-white">
+                      予約確定済
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : !isSelectedDateClosed && <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-4 py-10 opacity-50 grayscale">
                   <CheckSquare className="h-12 w-12" />
@@ -1329,17 +1285,13 @@ function CalendarView({ reservations, closedDays, isAdmin, loggedInGroup, onEdit
   );
 }
 
-function ReservationForm({ initialDate, reservations, closedDays, groups, user, loggedInGroup, isAdmin, onSuccess }) {
-  const [adminSelectedGroupId, setAdminSelectedGroupId] = useState('');
-  
-  const currentGroupId = isAdmin ? adminSelectedGroupId : loggedInGroup?.id;
-  const selectedGroupData = groups.find(g => g.id === currentGroupId);
-  const userType = selectedGroupData ? selectedGroupData.type : '';
-  const groupName = selectedGroupData ? selectedGroupData.name : '';
-
+function ReservationForm({ initialDate, reservations, closedDays, groups, user, onSuccess }) {
+  const isAdmin = !!(user && user.email);
+  const [authIdInput, setAuthIdInput] = useState('');
+  const [userType, setUserType] = useState(''); 
   const [selectedDate, setSelectedDate] = useState(initialDate || '');
   const [formData, setFormData] = useState({ 
-    startTime: '', endTime: '', purpose: '', userCount: ''
+    groupId: '', name: '', startTime: '', endTime: '', purpose: '', deletePass: '', userCount: ''
   });
   const [selectedFacilities, setSelectedFacilities] = useState(['体育館']);
   const [selectedCourts, setSelectedCourts] = useState([]);
@@ -1350,6 +1302,17 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
   const [recurringEndDate, setRecurringEndDate] = useState('');
 
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+
+  useEffect(() => {
+    const g = groups.find(group => group.authId === authIdInput.trim());
+    if (g) {
+      setFormData(prev => ({...prev, groupId: g.id, name: g.name}));
+      setUserType(g.type);
+    } else {
+      setFormData(prev => ({...prev, groupId: '', name: ''}));
+      setUserType('');
+    }
+  }, [authIdInput, groups]);
 
   const maxRecurringCount = useMemo(() => {
     if (userType === 'mcc') return 53;
@@ -1433,8 +1396,9 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
   const handlePreSubmit = (e) => {
     e.preventDefault();
     if (!user) return alert("認証エラーです");
-    if (!currentGroupId) return alert("団体を選択してください。");
+    if (!formData.groupId) return alert("有効な団体認証IDを入力してください。");
     if (selectedFacilities.length === 0) return alert("利用する施設を選択してください。");
+    if (!formData.deletePass) return alert("取り消し用パスワードを設定してください。");
     
     if (!isRecurring && isSelectedDateClosed) return alert("休館日のため予約できません。");
     if (isRecurring && partitionedDates.valid.length === 0) {
@@ -1443,13 +1407,14 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
 
     if (selectedFacilities.includes('体育館') && selectedCourts.length === 0) return alert("コート(A-F)を選んでください。");
 
+    const selectedGroupData = groups.find(g => g.id === formData.groupId);
     if (!selectedGroupData) return alert("団体が見つかりません。");
 
     if (selectedGroupData.penaltyUntil) {
       const penaltyEnd = new Date(selectedGroupData.penaltyUntil);
       if (penaltyEnd > new Date()) {
         const endStr = formatDateStr(penaltyEnd);
-        return alert(`【予約停止のお知らせ】\nペナルティにより、${endStr}まで新規予約が停止されています。\n※災害等による免除申請漏れの場合は、管理者へご連絡ください。`);
+        return alert(`【予約停止のお知らせ】\n前日・当日または無断キャンセルのペナルティにより、${endStr}まで新規予約が停止されています。\n※災害等による免除申請漏れの場合は、管理者へご連絡ください。`);
       }
     }
 
@@ -1514,7 +1479,12 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
       const newCount = monthlyNewBookings[monthStr];
       const additionalMinutes = newBookingMinutes * newCount;
 
-      const existingResInMonth = reservations.filter(r => r.groupId === currentGroupId && r.date.startsWith(monthStr) && r.status !== 'cancelled');
+      const existingResInMonth = reservations.filter(r => {
+        if (formData.name.includes('個人')) {
+          return r.name === formData.name && r.repName === formData.repName && r.date.startsWith(monthStr);
+        }
+        return r.groupId === formData.groupId && r.date.startsWith(monthStr);
+      });
       
       let currentTotalMinutes = 0;
       let currentSixCourtCount = 0;
@@ -1571,15 +1541,13 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
     setIsSubmitting(true);
     try {
       const batch = writeBatch(db);
-      const resCollection = collection(db, 'artifacts', appId, 'public', 'data', 'reservations');
+      const resCollection = collection(db, 'artifacts', safeAppId, 'public', 'data', 'reservations');
       
       partitionedDates.valid.forEach(d => {
         const newDocRef = doc(resCollection);
         batch.set(newDocRef, {
           date: d, 
           userType, 
-          groupId: currentGroupId,
-          name: groupName,
           ...formData, 
           place: selectedFacilities.join(', '), 
           courts: selectedFacilities.includes('体育館') ? selectedCourts : null,
@@ -1612,6 +1580,9 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
     }
   };
 
+  const selectedGroupData = groups.find(g => g.id === formData.groupId);
+  const limitType = selectedGroupData?.limitType || (selectedGroupData?.isExemptFromLimit ? 'unlimited' : '20');
+
   return (
     <>
     <form onSubmit={handlePreSubmit} className="max-w-4xl mx-auto space-y-8 animate-in slide-in-from-bottom-6 duration-500 pb-10">
@@ -1620,38 +1591,73 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
         施設利用申し込み
       </h2>
 
+      <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-2xl shadow-sm text-sm text-blue-900">
+        <p className="font-bold flex items-center mb-1"><Info className="w-5 h-5 mr-2" /> セキュリティと利便性に関するお知らせ</p>
+        <p className="leading-relaxed">
+          当システムでは個人情報の保護のため、氏名や電話番号、メールアドレスの入力を廃止いたしました。<br/>
+          ご予約には、事前に登録された<strong>「団体認証ID」</strong>が必要です。
+        </p>
+        <p className="mt-2 text-xs font-bold bg-white p-2 rounded border border-blue-100 inline-block">
+          💡 新規利用をご希望の方は、管理部署（リックスビジネスパートナーズ㈱）までご連絡いただき、専用の団体IDの発行をご依頼ください。
+        </p>
+      </div>
+      
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white p-8 rounded-3xl border shadow-lg space-y-6 h-fit">
-          <h3 className="font-bold border-b-2 border-blue-50 pb-3 flex items-center text-blue-900 text-lg tracking-tight"><Users className="h-6 w-6 mr-3 text-blue-500"/> ① 利用者情報</h3>
+          <h3 className="font-bold border-b-2 border-blue-50 pb-3 flex items-center text-blue-900 text-lg tracking-tight"><Users className="h-6 w-6 mr-3 text-blue-500"/> ① 団体認証</h3>
           
           <div className="space-y-4">
-            {isAdmin ? (
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3">【管理者用】予約する団体を選択 *</label>
-                <select 
-                  value={adminSelectedGroupId}
-                  onChange={(e) => setAdminSelectedGroupId(e.target.value)}
-                  className="bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white p-3.5 rounded-2xl w-full text-base font-bold outline-none transition-all shadow-inner text-gray-800"
-                >
-                  <option value="">-- 団体を選択してください --</option>
-                  {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                </select>
+            <div className="space-y-1 relative">
+              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-3">団体認証IDを入力 *</label>
+              <div className="relative">
+                <KeyRound className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="password"
+                  required
+                  placeholder="IDを入力"
+                  value={authIdInput}
+                  onChange={(e) => setAuthIdInput(e.target.value)}
+                  className="bg-gray-50 border-2 border-transparent focus:border-blue-500 focus:bg-white p-3.5 pl-12 rounded-2xl w-full text-base font-bold outline-none transition-all shadow-inner text-gray-800 tracking-widest"
+                />
               </div>
-            ) : (
-              <div className="bg-blue-50 border-2 border-blue-100 p-4 rounded-2xl">
-                <p className="text-[10px] font-bold text-blue-600 uppercase tracking-widest mb-1 flex items-center"><Check className="w-3 h-3 mr-1" /> ログイン中の団体</p>
-                <p className="text-lg font-black text-blue-900">{loggedInGroup?.name}</p>
-                <div className="mt-2">
-                  <span className="text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider bg-blue-200 text-blue-800 border border-blue-300">
-                    ID: {loggedInGroup?.authId}
+            </div>
+
+            {formData.name ? (
+              <div className="bg-green-50 border-2 border-green-200 p-4 rounded-2xl animate-in fade-in zoom-in-95">
+                <p className="text-[10px] font-bold text-green-600 uppercase tracking-widest mb-1 flex items-center"><Check className="w-3 h-3 mr-1" /> 認証成功</p>
+                <p className="text-lg font-black text-green-900">{formData.name}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <span className={`text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider ${userType === 'mcc' ? 'bg-purple-100 text-purple-700' : userType === 'employee' ? 'bg-blue-100 text-blue-700' : userType === 'soumu' ? 'bg-gray-200 text-gray-800' : 'bg-green-200 text-green-800'}`}>
+                    {userType === 'mcc' ? '会社の部活' : userType === 'employee' ? '従業員' : userType === 'soumu' ? '総務' : '一般・団体'}
                   </span>
+                  {limitType === 'unlimited' && (
+                    <span className="text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider bg-yellow-100 text-yellow-700 border border-yellow-200">
+                      時間無制限
+                    </span>
+                  )}
+                  {limitType === '30' && (
+                    <span className="text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider bg-orange-100 text-orange-700 border border-orange-200">
+                      月30時間枠
+                    </span>
+                  )}
+                  {selectedGroupData?.penaltyUntil && new Date(selectedGroupData.penaltyUntil) > new Date() && (
+                    <span className="text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider bg-red-100 text-red-700 border border-red-200 w-full mt-1">
+                      <AlertOctagon className="inline w-3 h-3 mr-1" />予約停止中（{formatDateStr(new Date(selectedGroupData.penaltyUntil))}まで）
+                    </span>
+                  )}
                 </div>
               </div>
-            )}
-            
-            <div className="pt-4 border-t border-gray-100">
+            ) : authIdInput.length > 0 ? (
+              <div className="bg-red-50 p-3 rounded-xl text-red-600 text-xs font-bold flex items-center">
+                <AlertTriangle className="w-4 h-4 mr-2" /> 無効なIDです。
+              </div>
+            ) : null}
+
+            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-100">
               <InputField label="使用人数 *" type="number" value={formData.userCount} onChange={(v)=>setFormData({...formData, userCount:v})} placeholder="名" />
+              <InputField label="取消用パスワード *" type="password" value={formData.deletePass} onChange={(v)=>setFormData({...formData, deletePass:v})} placeholder="数字4桁など" />
             </div>
+            <p className="text-[9px] text-gray-400 font-bold px-2">※取消用パスワードは、後でこの予約をキャンセル・変更する際に必要になります。</p>
           </div>
         </div>
 
@@ -1831,7 +1837,7 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
           <div className="bg-blue-50 p-5 rounded-2xl space-y-4 border border-blue-100">
             <div>
               <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">団体名</p>
-              <p className="font-bold text-blue-900">{groupName}</p>
+              <p className="font-bold text-blue-900">{formData.name}</p>
             </div>
             <div>
               <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest">日時</p>
@@ -1875,13 +1881,23 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
   );
 }
 
-function CancelView({ reservations, groups, penaltySettings, isAdmin, loggedInGroup, onSuccess }) {
-  const [adminSearchId, setAdminSearchId] = useState('');
+function CancelView({ reservations, groups, penaltySettings, isAdmin, onSuccess }) {
+  const [authIdInput, setAuthIdInput] = useState('');
+  const [targetGroup, setTargetGroup] = useState(null);
+  const [inputDeletePass, setInputDeletePass] = useState('');
   const [isExemptChecked, setIsExemptChecked] = useState(false);
 
-  const targetGroup = isAdmin 
-    ? groups.find(g => g.authId === adminSearchId.trim().toUpperCase())
-    : loggedInGroup;
+  const handleSearch = (e) => {
+    e.preventDefault();
+    const g = groups.find(group => group.authId === authIdInput.trim());
+    if (g) {
+      setTargetGroup(g);
+      setIsExemptChecked(false);
+    } else {
+      setTargetGroup(null);
+      alert("該当する団体が見つかりません。IDを確認してください。");
+    }
+  };
 
   const filteredResults = useMemo(() => {
     if (!targetGroup) return [];
@@ -1889,6 +1905,9 @@ function CancelView({ reservations, groups, penaltySettings, isAdmin, loggedInGr
   }, [reservations, targetGroup]);
 
   const handleCancel = async (targetRes) => {
+    if (!inputDeletePass) return alert("取消用パスワードを入力してください。");
+    if (targetRes.deletePass !== inputDeletePass) return alert("パスワードが正しくありません。");
+
     const willPenalty = isPenaltyTarget(targetRes);
     
     if (willPenalty && !isExemptChecked) {
@@ -1902,14 +1921,14 @@ function CancelView({ reservations, groups, penaltySettings, isAdmin, loggedInGr
 
     try {
       const batch = writeBatch(db);
-      const resRef = doc(db, 'artifacts', appId, 'public', 'data', 'reservations', targetRes.id);
+      const resRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', targetRes.id);
       batch.update(resRef, { 
         status: 'cancelled',
         cancelReason: isExemptChecked ? '災害等による特例免除' : '自己都合'
       });
 
       if (willPenalty && !isExemptChecked) {
-        const groupRef = doc(db, 'artifacts', appId, 'public', 'data', 'groups', targetGroup.id);
+        const groupRef = doc(db, 'artifacts', safeAppId, 'public', 'data', 'groups', targetGroup.id);
         const currentCount = targetGroup.penaltyCount || 0;
         const newCount = currentCount + 1;
         let pDays = newCount === 1 ? 0 : (penaltySettings.secondPenaltyDays || 30);
@@ -1924,6 +1943,7 @@ function CancelView({ reservations, groups, penaltySettings, isAdmin, loggedInGr
 
       await batch.commit();
       onSuccess();
+      setInputDeletePass('');
       setIsExemptChecked(false);
     } catch (err) { alert("削除に失敗しました。"); }
   };
@@ -1934,40 +1954,49 @@ function CancelView({ reservations, groups, penaltySettings, isAdmin, loggedInGr
         <h2 className="text-3xl font-black text-gray-900 tracking-tight flex items-center justify-center">
           <XCircle className="mr-3 h-8 w-8 text-red-500" /> 予約の取り消し
         </h2>
-        <p className="text-sm text-gray-500 font-bold">不要になった予約はごみ箱ボタンでキャンセルできます</p>
+        <p className="text-sm text-gray-500 font-bold">団体認証IDを入力して、予約一覧を表示します</p>
       </div>
 
       <div className="bg-white p-8 rounded-[2.5rem] border shadow-xl">
-        {isAdmin && (
-          <div className="relative group mb-8">
-            <KeyRound className="absolute left-6 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-400" />
-            <input 
-              type="text" 
-              value={adminSearchId} 
-              onChange={(e) => setAdminSearchId(e.target.value)} 
-              placeholder="【管理者用】団体認証IDを入力して検索" 
-              className="w-full pl-16 pr-14 py-4 bg-gray-50 border-4 border-transparent focus:border-red-400 focus:bg-white rounded-[2rem] text-lg font-bold outline-none transition-all shadow-inner tracking-widest uppercase" 
-            />
-          </div>
-        )}
+        <form onSubmit={handleSearch} className="relative group mb-8">
+          <KeyRound className="absolute left-6 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-400" />
+          <input 
+            type="password" 
+            value={authIdInput} 
+            onChange={(e) => setAuthIdInput(e.target.value)} 
+            placeholder="団体認証IDを入力" 
+            className="w-full pl-16 pr-14 py-4 bg-gray-50 border-4 border-transparent focus:border-red-400 focus:bg-white rounded-[2rem] text-lg font-bold outline-none transition-all shadow-inner tracking-widest" 
+          />
+          <button type="submit" className="absolute right-3 top-1/2 -translate-y-1/2 p-3 bg-red-500 text-white rounded-2xl hover:bg-red-600 shadow-lg active:scale-95 transition-all">
+            <Search className="h-6 w-6" />
+          </button>
+        </form>
 
         {targetGroup && (
           <div className="space-y-4 animate-in fade-in">
             <div className="text-center mb-6">
-              <span className="bg-red-100 text-red-700 px-4 py-1.5 rounded-full text-sm font-black border border-red-200">
+              <span className="bg-red-100 text-red-700 px-4 py-1.5 rounded-full text-sm font-black">
                 {targetGroup.name} の予約一覧
               </span>
             </div>
             
-            {filteredResults.length > 0 && isAdmin && (
-              <div className="bg-red-50 p-4 rounded-2xl mb-4 border border-red-200">
-                <label className="flex items-start gap-3 cursor-pointer p-2 hover:bg-red-100 rounded-lg transition-colors">
-                  <input type="checkbox" checked={isExemptChecked} onChange={(e) => setIsExemptChecked(e.target.checked)} className="mt-1 w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500" />
-                  <div>
-                    <span className="text-sm font-black text-red-800 block">災害・大雪などによる特例免除として申告する（管理者専用）</span>
-                    <span className="text-[10px] font-bold text-red-600 block mt-1 leading-relaxed">※当日・無断キャンセルでもペナルティが免除されます。</span>
+            {filteredResults.length > 0 && (
+              <div className="bg-red-50 p-5 rounded-2xl mb-4 border border-red-200 space-y-4">
+                <div className="flex items-center gap-3">
+                  <KeyRound className="h-5 w-5 text-red-500 flex-shrink-0" />
+                  <input type="password" placeholder="取消用パスワードを入力" value={inputDeletePass} onChange={(e) => setInputDeletePass(e.target.value)} className="bg-white border-2 border-red-200 rounded-xl px-4 py-3 flex-1 text-sm font-bold outline-none focus:border-red-500 shadow-inner" />
+                </div>
+                {isAdmin && (
+                  <div className="pt-3 border-t border-red-100">
+                    <label className="flex items-start gap-3 cursor-pointer p-2 hover:bg-red-100 rounded-lg transition-colors">
+                      <input type="checkbox" checked={isExemptChecked} onChange={(e) => setIsExemptChecked(e.target.checked)} className="mt-1 w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500" />
+                      <div>
+                        <span className="text-sm font-black text-red-800 block">災害・大雪などによる特例免除として申告する（管理者専用）</span>
+                        <span className="text-[10px] font-bold text-red-600 block mt-1 leading-relaxed">※当日・無断キャンセルでもペナルティが免除されます。</span>
+                      </div>
+                    </label>
                   </div>
-                </label>
+                )}
               </div>
             )}
             
@@ -1997,25 +2026,28 @@ function CancelView({ reservations, groups, penaltySettings, isAdmin, loggedInGr
             )}
           </div>
         )}
-        {!targetGroup && !isAdmin && (
-           <div className="text-center py-12 text-gray-400 space-y-2">
-             <p className="font-bold">団体情報が見つかりません。再ログインしてください。</p>
-           </div>
-        )}
       </div>
     </div>
   );
 }
 
-function ReportView({ groups, user, isAdmin, loggedInGroup, onSuccess }) {
-  const [adminSearchId, setAdminSearchId] = useState('');
+function ReportView({ groups, user, onSuccess }) {
+  const [authIdInput, setAuthIdInput] = useState('');
+  const [targetGroup, setTargetGroup] = useState(null);
   const [category, setCategory] = useState('施設・設備について');
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const targetGroup = isAdmin 
-    ? groups.find(g => g.authId === adminSearchId.trim().toUpperCase()) 
-    : loggedInGroup;
+  const handleSearch = (e) => {
+    e.preventDefault();
+    const g = groups.find(group => group.authId === authIdInput.trim());
+    if (g) {
+      setTargetGroup(g);
+    } else {
+      setTargetGroup(null);
+      alert("該当する団体が見つかりません。IDを確認してください。");
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -2024,7 +2056,7 @@ function ReportView({ groups, user, isAdmin, loggedInGroup, onSuccess }) {
 
     setIsSubmitting(true);
     try {
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'reports'), {
+      await addDoc(collection(db, 'artifacts', safeAppId, 'public', 'data', 'reports'), {
         groupId: targetGroup.id,
         groupName: targetGroup.name,
         category,
@@ -2035,7 +2067,8 @@ function ReportView({ groups, user, isAdmin, loggedInGroup, onSuccess }) {
       });
       setMessage('');
       onSuccess('報告を送信しました。ご協力ありがとうございます。');
-      setAdminSearchId('');
+      setTargetGroup(null);
+      setAuthIdInput('');
     } catch (err) {
       alert("送信に失敗しました。");
     } finally {
@@ -2053,23 +2086,24 @@ function ReportView({ groups, user, isAdmin, loggedInGroup, onSuccess }) {
       </div>
 
       <div className="bg-white p-8 rounded-[2.5rem] border shadow-xl">
-        {isAdmin && (
-          <div className="relative group mb-8">
-            <KeyRound className="absolute left-6 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-400" />
-            <input 
-              type="text" 
-              value={adminSearchId} 
-              onChange={(e) => setAdminSearchId(e.target.value)} 
-              placeholder="【管理者用】代理で報告する団体IDを入力" 
-              className="w-full pl-16 pr-14 py-4 bg-gray-50 border-4 border-transparent focus:border-blue-400 focus:bg-white rounded-[2rem] text-lg font-bold outline-none transition-all shadow-inner tracking-widest uppercase" 
-            />
-          </div>
-        )}
+        <form onSubmit={handleSearch} className="relative group mb-8">
+          <KeyRound className="absolute left-6 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-400" />
+          <input 
+            type="password" 
+            value={authIdInput} 
+            onChange={(e) => setAuthIdInput(e.target.value)} 
+            placeholder="団体認証IDを入力" 
+            className="w-full pl-16 pr-14 py-4 bg-gray-50 border-4 border-transparent focus:border-blue-400 focus:bg-white rounded-[2rem] text-lg font-bold outline-none transition-all shadow-inner tracking-widest" 
+          />
+          <button type="submit" className="absolute right-3 top-1/2 -translate-y-1/2 p-3 bg-blue-500 text-white rounded-2xl hover:bg-blue-600 shadow-lg active:scale-95 transition-all">
+            <Search className="h-6 w-6" />
+          </button>
+        </form>
 
         {targetGroup && (
-          <form onSubmit={handleSubmit} className="space-y-4 animate-in fade-in pt-2">
+          <form onSubmit={handleSubmit} className="space-y-4 animate-in fade-in border-t border-gray-100 pt-6 mt-6">
             <div className="text-center mb-6">
-              <span className="bg-blue-100 text-blue-800 px-4 py-1.5 rounded-full text-sm font-black border border-blue-200">
+              <span className="bg-blue-100 text-blue-700 px-4 py-1.5 rounded-full text-sm font-black">
                 {targetGroup.name} からの報告
               </span>
             </div>
@@ -2111,7 +2145,6 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupType, setNewGroupType] = useState('external');
   const [newGroupAuthId, setNewGroupAuthId] = useState('');
-  const [newGroupPassword, setNewGroupPassword] = useState('kaiteki-user'); // ★
   const [newGroupLimitType, setNewGroupLimitType] = useState('20');
   
   const [editAnnouncementText, setEditAnnouncementText] = useState('');
@@ -2165,7 +2198,7 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
 
   const handleUpdateAnnouncement = async () => {
     try {
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'system_messages', 'announcement'), {
+      await setDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'system_messages', 'announcement'), {
         text: editAnnouncementText,
         updatedAt: new Date().toISOString()
       });
@@ -2175,7 +2208,7 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
 
   const handleUpdatePenaltySettings = async () => {
     try {
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'penalty'), {
+      await setDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'settings', 'penalty'), {
         secondPenaltyDays: Number(editPenaltySettings.secondPenaltyDays),
         updatedAt: new Date().toISOString()
       });
@@ -2187,7 +2220,7 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
   const handleResetPenalty = async (id, name) => {
     if (window.confirm(`【${name}】のペナルティ履歴と予約停止期間をリセット（免除）しますか？`)) {
       try {
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'groups', id), {
+        await updateDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'groups', id), {
           penaltyCount: 0,
           penaltyUntil: null
         });
@@ -2267,21 +2300,21 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
 
   const updateReservationStatus = async (id, status) => {
     if (window.confirm(`この予約のステータスを「${status === 'approved' ? '予約確定' : 'キャンセル済'}」に変更しますか？`)) {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'reservations', id), { status });
+      await updateDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', id), { status });
       onStatusUpdate();
     }
   };
 
   const deleteReservationPermanent = async (id) => {
     if (window.confirm('この予約データを完全に削除しますか？\n（※利用者のペナルティ枠からも消去され、枠が戻ります）')) {
-      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'reservations', id));
+      await deleteDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'reservations', id));
       onStatusUpdate();
     }
   };
 
   const updateReportStatus = async (id, status) => {
     try {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'reports', id), { status });
+      await updateDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'reports', id), { status });
       onStatusUpdate();
     } catch (err) { alert("ステータスの更新に失敗しました"); }
   };
@@ -2290,11 +2323,10 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
     e.preventDefault();
     if (!newGroupName || !newGroupAuthId) return alert("団体名と認証IDを入力してください");
     try {
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'groups'), {
+      await addDoc(collection(db, 'artifacts', safeAppId, 'public', 'data', 'groups'), {
         name: newGroupName,
         type: newGroupType,
         authId: newGroupAuthId.trim().toUpperCase(),
-        password: newGroupPassword.trim(), // ★
         limitType: newGroupLimitType,
         penaltyCount: 0,
         penaltyUntil: null,
@@ -2302,7 +2334,6 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
       });
       setNewGroupName('');
       setNewGroupAuthId('');
-      setNewGroupPassword('kaiteki-user');
       setNewGroupLimitType('20');
       onStatusUpdate();
     } catch (err) { alert("団体の追加に失敗しました"); }
@@ -2311,7 +2342,7 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
   const handleDeleteGroup = async (id) => {
     if (window.confirm('この団体を削除しますか？\n※既存の予約データには影響しませんが、新規予約時に選択できなくなります。')) {
       try {
-        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'groups', id));
+        await deleteDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'groups', id));
         onStatusUpdate();
       } catch (err) { alert("削除に失敗しました"); }
     }
@@ -2322,7 +2353,7 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
     const typeLabels = { 'mcc': '会社の部活', 'employee': '従業員', 'external': '一般・団体', 'soumu': '総務' };
     if (window.confirm(`この団体の区分を「${typeLabels[newType]}」に変更しますか？`)) {
       try {
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'groups', id), { type: newType });
+        await updateDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'groups', id), { type: newType });
         onStatusUpdate();
       } catch (err) { alert("更新に失敗しました"); }
     }
@@ -2336,7 +2367,7 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
     const typeLabels = { '20': '20時間/月', '30': '30時間/月 (拡張)', 'unlimited': '無制限' };
     if (window.confirm(`この団体の月間利用枠を「${typeLabels[nextType]}」に変更しますか？`)) {
       try {
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'groups', id), { limitType: nextType });
+        await updateDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'groups', id), { limitType: nextType });
         onStatusUpdate();
       } catch (err) { alert("更新に失敗しました"); }
     }
@@ -2346,24 +2377,11 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
     const newAuthId = window.prompt(`【${groupName}】の新しい団体認証IDを入力してください（半角英数字）：`, currentAuthId);
     if (newAuthId !== null && newAuthId.trim() !== "" && newAuthId.trim() !== currentAuthId) {
       try {
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'groups', id), { 
+        await updateDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'groups', id), { 
           authId: newAuthId.trim().toUpperCase() 
         });
         onStatusUpdate();
       } catch (err) { alert("IDの更新に失敗しました"); }
-    }
-  };
-
-  // ★ パスワード変更
-  const updateGroupPassword = async (id, currentPass, groupName) => {
-    const newPass = window.prompt(`【${groupName}】の新しいログインパスワードを入力してください：\n(※初期設定は kaiteki-user になっています)`, currentPass || 'kaiteki-user');
-    if (newPass !== null && newPass.trim() !== "") {
-      try {
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'groups', id), { 
-          password: newPass.trim() 
-        });
-        onStatusUpdate();
-      } catch (err) { alert("パスワードの更新に失敗しました"); }
     }
   };
 
@@ -2393,7 +2411,7 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
     }
     try {
       const batch = writeBatch(db);
-      const closedRef = collection(db, 'artifacts', appId, 'public', 'data', 'closed_days');
+      const closedRef = collection(db, 'artifacts', safeAppId, 'public', 'data', 'closed_days');
       targetDates.forEach(d => {
         if (!closedDays.some(cd => cd.date === d)) {
           const newDocRef = doc(closedRef);
@@ -2409,7 +2427,7 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
 
   const removeClosedDay = async (id) => {
     if (window.confirm('休館設定を解除しますか？')) {
-      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'closed_days', id));
+      await deleteDoc(doc(db, 'artifacts', safeAppId, 'public', 'data', 'closed_days', id));
       onStatusUpdate();
     }
   };
@@ -2540,8 +2558,8 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
           
           <form onSubmit={handleAddGroup} className="bg-indigo-50/30 p-5 rounded-2xl border border-indigo-100">
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
-              <div className="sm:col-span-3">
-                <label className="text-[9px] font-black text-indigo-400 uppercase tracking-widest px-1 block mb-1">団体・個人名 *</label>
+              <div className="sm:col-span-4">
+                <label className="text-[9px] font-black text-indigo-400 uppercase tracking-widest px-1 block mb-1">団体・個人名</label>
                 <input type="text" required placeholder="例：MCCテニス部" value={newGroupName} onChange={(e)=>setNewGroupName(e.target.value)} className="w-full border p-2.5 rounded-xl text-sm font-bold outline-none focus:border-indigo-500" />
               </div>
               <div className="sm:col-span-3">
@@ -2554,12 +2572,8 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
                 </select>
               </div>
               <div className="sm:col-span-3">
-                <label className="text-[9px] font-black text-indigo-400 uppercase tracking-widest px-1 block mb-1">認証ID * (推奨: {nextIdGuides[newGroupType]})</label>
-                <input type="text" required placeholder="IDを入力" value={newGroupAuthId} onChange={(e)=>setNewGroupAuthId(e.target.value)} className="w-full border p-2.5 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 tracking-widest font-mono uppercase" />
-              </div>
-              <div className="sm:col-span-3">
-                <label className="text-[9px] font-black text-indigo-400 uppercase tracking-widest px-1 block mb-1">パスワード *</label>
-                <input type="text" required placeholder="kaiteki-user" value={newGroupPassword} onChange={(e)=>setNewGroupPassword(e.target.value)} className="w-full border p-2.5 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 tracking-widest font-mono" />
+                <label className="text-[9px] font-black text-indigo-400 uppercase tracking-widest px-1 block mb-1">認証ID (推奨: {nextIdGuides[newGroupType]})</label>
+                <input type="text" required placeholder="IDを入力" value={newGroupAuthId} onChange={(e)=>setNewGroupAuthId(e.target.value)} className="w-full border p-2.5 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 tracking-widest font-mono" />
               </div>
             </div>
             <div className="flex items-center justify-between border-t border-indigo-100/50 pt-4 mt-4">
@@ -2583,7 +2597,7 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
                 placeholder="登録リストから検索（名前・ID）..." 
                 value={groupSearchTerm} 
                 onChange={(e) => setGroupSearchTerm(e.target.value)} 
-                className="w-full pl-10 pr-4 py-2.5 border rounded-xl text-sm font-bold focus:border-indigo-500 outline-none bg-gray-50/50" 
+                className="w-full pl-10 pr-4 py-2.5 border rounded-xl text-sm focus:border-indigo-500 outline-none bg-gray-50/50" 
               />
             </div>
             <div className="max-h-80 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pr-1">
@@ -2595,8 +2609,8 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
                 return (
                   <div key={g.id} className={`flex flex-col bg-white p-3 rounded-xl border-2 transition-all ${isSuspended ? 'border-red-300 bg-red-50' : 'border-gray-100 hover:border-indigo-200 shadow-sm'}`}>
                     <div className="flex justify-between items-start mb-2">
-                      <div className="flex flex-col w-full">
-                        <span className="text-sm font-black text-gray-800 truncate max-w-full" title={g.name}>{g.name}</span>
+                      <div className="flex flex-col">
+                        <span className="text-sm font-black text-gray-800 truncate max-w-[150px]" title={g.name}>{g.name}</span>
                         <div className="flex items-center gap-1 mt-1 flex-wrap">
                           <select 
                             value={g.type} 
@@ -2613,29 +2627,25 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
                             className="text-[9px] font-mono font-bold text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded cursor-pointer hover:bg-blue-100 hover:text-blue-700 transition-colors flex items-center gap-1"
                             title="IDを変更する"
                           >
-                            ID:{g.authId} <Edit2 className="w-2 h-2" />
+                            ID: {g.authId} <Edit2 className="w-2 h-2" />
                           </span>
                         </div>
-                        <div className="mt-1.5 flex justify-between items-center bg-gray-50 border rounded p-1">
-                           <span className="text-[9px] font-bold text-gray-500">PASS: <span className="font-mono text-gray-800">{g.password || '未設定(kaiteki-user)'}</span></span>
-                           <button onClick={() => updateGroupPassword(g.id, g.password, g.name)} className="text-[9px] bg-white border px-1.5 py-0.5 rounded hover:bg-blue-50 text-blue-600 font-bold">変更</button>
-                        </div>
                       </div>
-                      <div className="flex flex-col gap-1 ml-1 items-end shrink-0">
-                        <button onClick={()=>toggleLimitType(g.id, lType)} className="text-gray-400 hover:text-indigo-600 p-1.5 transition-colors" title="月間利用枠を変更">
+                      <div className="flex gap-1">
+                        <button onClick={()=>toggleLimitType(g.id, lType)} className="text-gray-400 hover:text-indigo-600 p-2 transition-colors" title="月間利用枠を変更">
                           {lType === 'unlimited' ? <Unlock className="h-4 w-4 text-yellow-500"/> : lType === '30' ? <Clock className="h-4 w-4 text-orange-500"/> : <Lock className="h-4 w-4"/>}
                         </button>
-                        <button onClick={()=>handleDeleteGroup(g.id)} className="text-indigo-300 hover:text-red-600 p-1.5 transition-colors"><Trash2 className="h-4 w-4"/></button>
+                        <button onClick={()=>handleDeleteGroup(g.id)} className="text-indigo-300 hover:text-red-600 p-2 transition-colors"><Trash2 className="h-4 w-4"/></button>
                       </div>
                     </div>
                     {/* ペナルティ情報エリア */}
-                    <div className={`mt-auto p-2 rounded-lg flex items-center justify-between ${pCount > 0 ? 'bg-red-100' : 'bg-transparent border border-dashed border-gray-200'}`}>
+                    <div className={`mt-auto p-2 rounded-lg flex items-center justify-between ${pCount > 0 ? 'bg-red-100' : 'bg-gray-50'}`}>
                       <div className="text-[10px] font-bold text-red-800 flex flex-col">
                         <span>ペナルティ: {pCount}回</span>
                         {isSuspended && <span className="text-[9px]">停止: ~{formatDateStr(new Date(g.penaltyUntil))}</span>}
                       </div>
                       {pCount > 0 && (
-                        <button onClick={() => handleResetPenalty(g.id, g.name)} className="text-[9px] bg-white border border-red-200 text-red-600 px-2 py-1 rounded shadow-sm hover:bg-red-50 font-bold">解除</button>
+                        <button onClick={() => handleResetPenalty(g.id, g.name)} className="text-[9px] bg-white border border-red-200 text-red-600 px-2 py-1 rounded shadow-sm hover:bg-red-50">解除</button>
                       )}
                     </div>
                   </div>
@@ -3309,7 +3319,7 @@ function RulesView() {
                 <p>・当日キャンセル・無断キャンセル</p>
                 <p className="text-[10px] text-gray-500 leading-relaxed mt-1">
                   ※前日までのキャンセルはペナルティ対象外です。<br/>
-                  ※当日・無断キャンセルであっても、予約後1時間い内の取り消しであれば、間違い防止のためペナルティは課されません。
+                  ※当日・無断キャンセルであっても、予約後1時間以内の取り消しであれば、間違い防止のためペナルティは課されません。
                 </p>
               </div>
               <div className="bg-white p-4 rounded-2xl border border-red-100 text-xs font-bold text-gray-700 space-y-2">
