@@ -19,8 +19,7 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-const appId = String(rawAppId).replace(/\//g, '-');
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'kaiteki-gym-production-v2';
 
 // ★アクセス保護用の共通パスワード
 const PORTAL_PASSWORD = "kaiteki-user";
@@ -28,29 +27,29 @@ const ADMIN_CC_EMAIL = "MCJP-DG-RIX_TOYAMA_TAIIKUKAN@mchcgr.com";
 
 // --- 初期登録団体リスト ---
 const INITIAL_GROUPS = [
-  { name: 'MCCバレー', type: 'mcc', authId: 'M1001', limitType: 'unlimited', penaltyCount: 0, penaltyUntil: null },
-  { name: 'MCC卓球', type: 'mcc', authId: 'M1002', limitType: 'unlimited', penaltyCount: 0, penaltyUntil: null },
-  { name: 'MCCバドミントン', type: 'mcc', authId: 'M1003', limitType: 'unlimited', penaltyCount: 0, penaltyUntil: null },
-  { name: '佐野（富山北FC）', type: 'employee', authId: 'E1001', limitType: 'unlimited', penaltyCount: 0, penaltyUntil: null },
-  { name: '朝岡（FC ALVA)', type: 'employee', authId: 'E1002', limitType: 'unlimited', penaltyCount: 0, penaltyUntil: null },
-  { name: '斉藤（和合ハンドボール）', type: 'employee', authId: 'E1003', limitType: 'unlimited', penaltyCount: 0, penaltyUntil: null },
-  { name: '斉藤（ターミガンズ ジュニア）', type: 'employee', authId: 'E1004', limitType: 'unlimited', penaltyCount: 0, penaltyUntil: null },
-  { name: '金森（ピックルボール富山）', type: 'employee', authId: 'E1005', limitType: 'unlimited', penaltyCount: 0, penaltyUntil: null },
-  { name: '金森（神明フレッシュテニス）', type: 'employee', authId: 'E1006', limitType: 'unlimited', penaltyCount: 0, penaltyUntil: null },
-  { name: '亀畑', type: 'employee', authId: 'E1007', limitType: 'unlimited', penaltyCount: 0, penaltyUntil: null },
-  { name: '林田（hayashuda)', type: 'employee', authId: 'E1008', limitType: 'unlimited', penaltyCount: 0, penaltyUntil: null },
-  { name: '吉岡（富山ドリームズ）', type: 'employee', authId: 'E1009', limitType: 'unlimited', penaltyCount: 0, penaltyUntil: null },
-  { name: '梅田', type: 'employee', authId: 'E1010', limitType: 'unlimited', penaltyCount: 0, penaltyUntil: null },
-  { name: '古金(BC)', type: 'employee', authId: 'E1011', limitType: 'unlimited', penaltyCount: 0, penaltyUntil: null },
-  { name: 'BRABBTS', type: 'external', authId: 'G1001', limitType: 'unlimited', penaltyCount: 0, penaltyUntil: null },
-  { name: '富山ダルク', type: 'external', authId: 'G1002', limitType: 'unlimited', penaltyCount: 0, penaltyUntil: null },
-  { name: 'Rey華繚乱', type: 'external', authId: 'G1003', limitType: 'unlimited', penaltyCount: 0, penaltyUntil: null },
-  { name: 'SDバスケ', type: 'external', authId: 'G1004', limitType: 'unlimited', penaltyCount: 0, penaltyUntil: null },
-  { name: '岩瀬中バスケ', type: 'external', authId: 'G1005', limitType: 'unlimited', penaltyCount: 0, penaltyUntil: null },
-  { name: '富山北FC', type: 'external', authId: 'G1006', limitType: 'unlimited', penaltyCount: 0, penaltyUntil: null },
-  { name: 'HAGIURAバレー', type: 'external', authId: 'G1007', limitType: 'unlimited', penaltyCount: 0, penaltyUntil: null },
-  { name: '富山北部VC', type: 'external', authId: 'G1008', limitType: 'unlimited', penaltyCount: 0, penaltyUntil: null },
-  { name: '北中女子ソフトテニス部', type: 'external', authId: 'G1009', limitType: 'unlimited', penaltyCount: 0, penaltyUntil: null }
+  { name: 'MCCバレー', type: 'mcc', authId: 'M1001', limitType: '20', penaltyCount: 0, penaltyUntil: null },
+  { name: 'MCC卓球', type: 'mcc', authId: 'M1002', limitType: '20', penaltyCount: 0, penaltyUntil: null },
+  { name: 'MCCバドミントン', type: 'mcc', authId: 'M1003', limitType: '20', penaltyCount: 0, penaltyUntil: null },
+  { name: '佐野（富山北FC）', type: 'employee', authId: 'E1001', limitType: '20', penaltyCount: 0, penaltyUntil: null },
+  { name: '朝岡（FC ALVA)', type: 'employee', authId: 'E1002', limitType: '20', penaltyCount: 0, penaltyUntil: null },
+  { name: '斉藤（和合ハンドボール）', type: 'employee', authId: 'E1003', limitType: '20', penaltyCount: 0, penaltyUntil: null },
+  { name: '斉藤（ターミガンズ ジュニア）', type: 'employee', authId: 'E1004', limitType: '20', penaltyCount: 0, penaltyUntil: null },
+  { name: '金森（ピックルボール富山）', type: 'employee', authId: 'E1005', limitType: '20', penaltyCount: 0, penaltyUntil: null },
+  { name: '金森（神明フレッシュテニス）', type: 'employee', authId: 'E1006', limitType: '20', penaltyCount: 0, penaltyUntil: null },
+  { name: '亀畑', type: 'employee', authId: 'E1007', limitType: '20', penaltyCount: 0, penaltyUntil: null },
+  { name: '林田（hayashuda)', type: 'employee', authId: 'E1008', limitType: '20', penaltyCount: 0, penaltyUntil: null },
+  { name: '吉岡（富山ドリームズ）', type: 'employee', authId: 'E1009', limitType: '20', penaltyCount: 0, penaltyUntil: null },
+  { name: '梅田', type: 'employee', authId: 'E1010', limitType: '20', penaltyCount: 0, penaltyUntil: null },
+  { name: '古金(BC)', type: 'employee', authId: 'E1011', limitType: '20', penaltyCount: 0, penaltyUntil: null },
+  { name: 'BRABBTS', type: 'external', authId: 'G1001', limitType: '20', penaltyCount: 0, penaltyUntil: null },
+  { name: '富山ダルク', type: 'external', authId: 'G1002', limitType: '20', penaltyCount: 0, penaltyUntil: null },
+  { name: 'Rey華繚乱', type: 'external', authId: 'G1003', limitType: '20', penaltyCount: 0, penaltyUntil: null },
+  { name: 'SDバスケ', type: 'external', authId: 'G1004', limitType: '20', penaltyCount: 0, penaltyUntil: null },
+  { name: '岩瀬中バスケ', type: 'external', authId: 'G1005', limitType: '20', penaltyCount: 0, penaltyUntil: null },
+  { name: '富山北FC', type: 'external', authId: 'G1006', limitType: '20', penaltyCount: 0, penaltyUntil: null },
+  { name: 'HAGIURAバレー', type: 'external', authId: 'G1007', limitType: '20', penaltyCount: 0, penaltyUntil: null },
+  { name: '富山北部VC', type: 'external', authId: 'G1008', limitType: '20', penaltyCount: 0, penaltyUntil: null },
+  { name: '北中女子ソフトテニス部', type: 'external', authId: 'G1009', limitType: '20', penaltyCount: 0, penaltyUntil: null }
 ];
 
 const equipmentForAll = [
@@ -484,34 +483,12 @@ function EditReservationModal({ reservation, groups, allReservations, isAdmin, o
     let requiresAdminOverride = false;
     let overrideMsgs = [];
 
-    // 日付に関するバリデーション（部活は当年の12月末まで）
-    const today = new Date();
-    const currentYear = today.getFullYear();
-    const mccMaxDate = new Date(currentYear, 11, 31); 
-    const employeeMaxDate = new Date();
-    employeeMaxDate.setMonth(employeeMaxDate.getMonth() + 3);
-    const externalMaxDate = new Date();
-    externalMaxDate.setMonth(externalMaxDate.getMonth() + 2);
-
-    const targetDateObj = new Date(reservation.date);
-    
-    if (groupData.type === 'mcc' && targetDateObj > mccMaxDate) {
-      overrideMsgs.push(`・会社の部活の予約可能期間（年内12月末まで）を超えています。`);
-      requiresAdminOverride = true;
-    } else if (groupData.type === 'employee' && targetDateObj > employeeMaxDate) {
-      overrideMsgs.push(`・従業員の予約可能期間（3ヶ月先まで）を超えています。`);
-      requiresAdminOverride = true;
-    } else if (groupData.type === 'external' && targetDateObj > externalMaxDate) {
-      overrideMsgs.push(`・一般・団体の予約可能期間（2ヶ月先まで）を超えています。`);
-      requiresAdminOverride = true;
-    }
-
     if (!isExempt && currentTotalMinutes + newMinutes > limitMinutes) {
-      overrideMsgs.push(`・月間予約上限（${limitMinutes/60}時間）を超過します。`);
+      overrideMsgs.push(`月間予約上限（${limitMinutes/60}時間）を超過します。`);
       requiresAdminOverride = true;
     }
-    if (groupData.type !== 'soumu' && newSixCourts && currentSixCourtCount + newSixCourts > 1) {
-      overrideMsgs.push(`・全面(6面)予約の月間上限(1回)を超過します。`);
+    if (reservation.userType !== 'soumu' && newSixCourts && currentSixCourtCount + newSixCourts > 1) {
+      overrideMsgs.push(`全面(6面)予約の月間上限(1回)を超過します。`);
       requiresAdminOverride = true;
     }
 
@@ -1320,11 +1297,11 @@ function CalendarView({ reservations, closedDays, isAdmin, loggedInGroup, onEdit
                       key={res.id} 
                       className={`border-l-8 p-4 rounded-xl shadow transition-all relative group 
                         ${isOwnReservation ? 'border-orange-500 bg-orange-50/30 hover:scale-[1.02] cursor-pointer' : 'border-blue-500 bg-white'}`}
-                      onClick={() => isOwnReservation && onEditClick(res)}
+                      onClick={() => isOwnReservation && handleCalendarEdit(res)}
                     >
                       {isOwnReservation && (
                         <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
-                          <button onClick={(e) => { e.stopPropagation(); onDeleteClick(res); }} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-100 flex items-center shadow-sm transition-colors border border-red-200">
+                          <button onClick={(e) => { e.stopPropagation(); handleCalendarDelete(res); }} className="bg-red-50 text-red-600 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-100 flex items-center shadow-sm transition-colors border border-red-200">
                             <Trash2 className="w-3 h-3 mr-1" /> 取消
                           </button>
                         </div>
@@ -1498,7 +1475,9 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
 
     const today = new Date();
     const currentYear = today.getFullYear();
-    const mccMaxDate = new Date(currentYear, 11, 31); 
+    const currentMonth = today.getMonth() + 1;
+    const endOfCurrentFiscalYear = new Date(currentMonth <= 3 ? currentYear : currentYear + 1, 2, 31); 
+    const mccMaxDate = new Date(endOfCurrentFiscalYear.getFullYear() + 1, 2, 31);
     const employeeMaxDate = new Date();
     employeeMaxDate.setMonth(employeeMaxDate.getMonth() + 3);
     const externalMaxDate = new Date();
@@ -1507,7 +1486,7 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
     for (const d of partitionedDates.valid) {
       const targetDateObj = new Date(d);
       if (userType === 'mcc' && targetDateObj > mccMaxDate) {
-        adminOverrideMessages.push(`・会社の部活の予約可能期間（年内12月末まで）を超えています。`);
+        adminOverrideMessages.push(`・会社の部活の予約可能期間（次年度3月末まで）を超えています。`);
         requiresAdminOverride = true; break;
       }
       if (userType === 'employee' && targetDateObj > employeeMaxDate) {
@@ -2144,7 +2123,7 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
   const [newGroupType, setNewGroupType] = useState('external');
   const [newGroupAuthId, setNewGroupAuthId] = useState('');
   const [newGroupPassword, setNewGroupPassword] = useState('kaiteki-user'); // ★
-  const [newGroupLimitType, setNewGroupLimitType] = useState('unlimited');
+  const [newGroupLimitType, setNewGroupLimitType] = useState('20');
   
   const [editAnnouncementText, setEditAnnouncementText] = useState('');
   
@@ -2345,7 +2324,7 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
       setNewGroupName('');
       setNewGroupAuthId('');
       setNewGroupPassword('kaiteki-user');
-      setNewGroupLimitType('unlimited');
+      setNewGroupLimitType('20');
       onStatusUpdate();
     } catch (err) { alert("団体の追加に失敗しました"); }
   };
@@ -3321,7 +3300,7 @@ function RulesView() {
               <div className="bg-white p-4 rounded-2xl border-2 border-purple-100 shadow-sm">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded font-black">会社の部活</span>
-                  <span className="text-sm font-bold text-gray-800">年内（12月末）まで</span>
+                  <span className="text-sm font-bold text-gray-800">次年度の3月末まで</span>
                 </div>
               </div>
               <div className="bg-white p-4 rounded-2xl border-2 border-blue-100 shadow-sm">
@@ -3337,7 +3316,7 @@ function RulesView() {
                 </div>
               </div>
               <div className="mt-4 space-y-3 pt-4 border-t-2 border-blue-100/50 text-xs font-black text-blue-900">
-                 <p className="border-l-4 border-blue-500 pl-2">月間利用制限：時間無制限</p>
+                 <p className="border-l-4 border-blue-500 pl-2">月間利用制限：基本は月20時間まで</p>
                  <p className="border-l-4 border-blue-500 pl-2">全面予約制限：体育館6面予約は月1回まで</p>
               </div>
             </div>
@@ -3355,8 +3334,8 @@ function RulesView() {
                 <div className="text-red-600 font-black mb-1 border-b border-red-100 pb-1">■ ペナルティ対象</div>
                 <p>・当日キャンセル・無断キャンセル</p>
                 <p className="text-[10px] text-gray-500 leading-relaxed mt-1">
-                  ※前日までのキャンセルはペナルティ対象外です。<br />
-                  ※当日・無断キャンセルであっても、予約後1時間以内の取り消しであれば、間違い防止のためペナルティは課されません。
+                  ※前日までのキャンセルはペナルティ対象外です。<br/>
+                  ※当日・無断キャンセルであっても、予約後1時間い内の取り消しであれば、間違い防止のためペナルティは課されません。
                 </p>
               </div>
               <div className="bg-white p-4 rounded-2xl border border-red-100 text-xs font-bold text-gray-700 space-y-2">
