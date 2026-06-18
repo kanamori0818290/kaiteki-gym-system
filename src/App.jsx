@@ -632,6 +632,10 @@ export default function App() {
   const [portalPassInput, setPortalPassInput] = useState('');
   const [loggedInGroup, setLoggedInGroup] = useState(null);
 
+  const [requirePasswordChange, setRequirePasswordChange] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [newPasswordConfirm, setNewPasswordConfirm] = useState('');
+
   const [user, setUser] = useState(null);
   const [isAdminMode, setIsAdminMode] = useState(false);
   const isAdmin = isAdminMode || !!(user && user.email);
@@ -821,12 +825,20 @@ export default function App() {
     );
 
     if (group) {
-      setIsPortalAuthorized(true);
       setLoggedInGroup(group);
       setLoginAttempts(0);
       setLockoutUntil(null);
       localStorage.removeItem('gym_login_attempts');
       localStorage.removeItem('gym_lockout_until');
+
+      if (group.password === 'kaiteki-user' || !group.password) {
+        // 初期パスワードの場合は変更画面を表示
+        setRequirePasswordChange(true);
+      } else {
+        // それ以外はそのままログイン成功
+        setIsPortalAuthorized(true);
+        setPortalPassInput(''); // セキュリティのためクリア
+      }
     } else {
       const newAttempts = loginAttempts + 1;
       setLoginAttempts(newAttempts);
@@ -840,6 +852,33 @@ export default function App() {
       } else {
         alert(`ログインIDまたはパスワードが正しくありません。\n（あと${MAX_ATTEMPTS - newAttempts}回間違えるとロックされます）`);
       }
+    }
+  };
+
+  const handlePasswordChange = async (e) => {
+    e.preventDefault();
+    if (newPassword !== newPasswordConfirm) {
+      return alert('新しいパスワードと確認用パスワードが一致しません。');
+    }
+    if (newPassword.length < 4) {
+      return alert('パスワードは4文字以上で設定してください。');
+    }
+    if (newPassword === 'kaiteki-user') {
+      return alert('初期パスワード以外のパスワードを設定してください。');
+    }
+
+    try {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'groups', loggedInGroup.id), {
+        password: newPassword
+      });
+      setIsPortalAuthorized(true);
+      setRequirePasswordChange(false);
+      setPortalPassInput('');
+      setNewPassword('');
+      setNewPasswordConfirm('');
+      showToast('パスワードを変更してログインしました');
+    } catch(err) {
+      alert('パスワードの更新に失敗しました。');
     }
   };
 
@@ -961,7 +1000,43 @@ export default function App() {
             <p className="text-gray-500 font-bold">予約システム 利用者ログイン</p>
           </div>
           
-          {isLocked ? (
+          {requirePasswordChange ? (
+             <form onSubmit={handlePasswordChange} className="space-y-6 animate-in fade-in slide-in-from-right-4">
+               <div className="bg-yellow-50 p-4 rounded-2xl border border-yellow-200 text-sm font-bold text-yellow-800 text-left mb-6 shadow-sm">
+                 <AlertTriangle className="w-5 h-5 inline-block mr-1 mb-1 text-yellow-600" /> 
+                 セキュリティのため、初期パスワードからの変更が必要です。新しいパスワードを設定してください。
+               </div>
+               <div className="space-y-1">
+                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block text-left px-4">新しいパスワード (4文字以上)</label>
+                 <input 
+                   type="password" 
+                   required 
+                   autoFocus
+                   value={newPassword}
+                   onChange={e => setNewPassword(e.target.value)}
+                   className="w-full bg-gray-50 border-4 border-transparent focus:border-blue-500 focus:bg-white p-4 rounded-[2rem] text-center text-xl tracking-[0.3em] outline-none transition-all shadow-inner" 
+                 />
+               </div>
+               <div className="space-y-1">
+                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block text-left px-4">新しいパスワード (確認用)</label>
+                 <input 
+                   type="password" 
+                   required 
+                   value={newPasswordConfirm}
+                   onChange={e => setNewPasswordConfirm(e.target.value)}
+                   className="w-full bg-gray-50 border-4 border-transparent focus:border-blue-500 focus:bg-white p-4 rounded-[2rem] text-center text-xl tracking-[0.3em] outline-none transition-all shadow-inner" 
+                 />
+               </div>
+               <div className="pt-2">
+                 <button type="submit" className="w-full bg-blue-600 text-white py-5 rounded-[2rem] font-black text-xl hover:bg-blue-700 shadow-xl transition-all active:scale-95">
+                   変更してシステムに入る
+                 </button>
+                 <button type="button" onClick={() => {setRequirePasswordChange(false); setLoggedInGroup(null);}} className="mt-4 text-sm font-bold text-gray-400 hover:text-gray-600 transition-colors">
+                   キャンセルして戻る
+                 </button>
+               </div>
+             </form>
+          ) : isLocked ? (
              <div className="bg-red-50 p-6 rounded-2xl border-2 border-red-200 space-y-3 animate-in fade-in">
                <p className="font-bold text-red-800 text-sm flex items-center justify-center"><AlertTriangle className="w-4 h-4 mr-2" /> セキュリティロック中</p>
                <div className="text-4xl font-black text-red-600 font-mono tracking-widest bg-white py-3 rounded-xl border border-red-100 shadow-inner">
@@ -1062,7 +1137,7 @@ export default function App() {
                 ) : isPortalAuthorized && loggedInGroup ? (
                   <div className="flex items-center gap-2">
                     <span className="bg-blue-100 text-blue-800 text-[10px] px-2 py-0.5 rounded-full font-black truncate max-w-[150px]">{loggedInGroup.name}</span>
-                    <button onClick={() => {setIsPortalAuthorized(false); setLoggedInGroup(null);}} className="flex items-center text-[10px] bg-white/20 text-white px-3 py-1 rounded-full font-bold hover:bg-white/30 shadow-sm">
+                    <button onClick={() => {setIsPortalAuthorized(false); setLoggedInGroup(null); setRequirePasswordChange(false); setNewPassword(''); setNewPasswordConfirm('');}} className="flex items-center text-[10px] bg-white/20 text-white px-3 py-1 rounded-full font-bold hover:bg-white/30 shadow-sm">
                       <LogOut className="h-3 w-3 mr-1" />ログアウト
                     </button>
                   </div>
