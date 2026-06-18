@@ -18,7 +18,7 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'kaiteki-gym-production-v2';
 
 // ★アクセス保護用の共通パスワード
 const PORTAL_PASSWORD = "kaiteki-user";
@@ -728,19 +728,8 @@ export default function App() {
 
     const groupsRef = collection(db, 'artifacts', appId, 'public', 'data', 'groups');
     const unsubGroups = onSnapshot(groupsRef, (snapshot) => {
-      if (snapshot.empty) {
-        if (isAdmin) {
-          const batch = writeBatch(db);
-          INITIAL_GROUPS.forEach(g => {
-            const docRef = doc(groupsRef);
-            batch.set(docRef, { ...g, password: 'kaiteki-user', createdAt: new Date().toISOString() });
-          });
-          batch.commit().catch(err => console.error("Initial data insertion failed:", err));
-        }
-      } else {
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setGroups(data.sort((a,b) => (a.name || "").localeCompare(b.name || "", 'ja')));
-      }
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setGroups(data.sort((a,b) => (a.name || "").localeCompare(b.name || "", 'ja')));
     }, (err) => console.error(err));
 
     let unsubRes = () => {};
