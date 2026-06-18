@@ -5,7 +5,7 @@ import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, 
 import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, writeBatch, setDoc } from 'firebase/firestore';
 
 // --- Firebase 設定 ---
-const defaultFirebaseConfig = {
+const firebaseConfig = {
   apiKey: "AIzaSyCTDD_TMng6EclbLiMoc7-36QRowhQrvew",
   authDomain: "kaiteki-gym.firebaseapp.com",
   projectId: "kaiteki-gym",
@@ -13,14 +13,12 @@ const defaultFirebaseConfig = {
   messagingSenderId: "88315814584",
   appId: "1:88315814584:web:14eb104398bb05cf0bca4d"
 };
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : defaultFirebaseConfig;
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// ★ 環境IDのサニタイズ処理を削除し、本番環境のパスをそのまま使用する（データ連携・ログインエラー対策）
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'kaiteki-gym-production-v2';
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
 // ★アクセス保護用の共通パスワード
 const PORTAL_PASSWORD = "kaiteki-user";
@@ -695,10 +693,18 @@ export default function App() {
 
   useEffect(() => {
     const initAuth = async () => {
-      if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-        await signInWithCustomToken(auth, __initial_auth_token);
-      } else {
-        await signInAnonymously(auth);
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          try {
+            await signInWithCustomToken(auth, __initial_auth_token);
+          } catch (e) {
+            await signInAnonymously(auth);
+          }
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (error) {
+        console.error(error);
       }
     };
     initAuth();
@@ -860,8 +866,8 @@ export default function App() {
     if (newPassword !== newPasswordConfirm) {
       return alert('新しいパスワードと確認用パスワードが一致しません。');
     }
-    if (newPassword.length < 4) {
-      return alert('パスワードは4文字以上で設定してください。');
+    if (newPassword.length < 6) {
+      return alert('パスワードは6文字以上で設定してください。');
     }
     if (newPassword === 'kaiteki-user') {
       return alert('初期パスワード以外のパスワードを設定してください。');
@@ -878,7 +884,8 @@ export default function App() {
       setNewPasswordConfirm('');
       showToast('パスワードを変更してログインしました');
     } catch(err) {
-      alert('パスワードの更新に失敗しました。');
+      console.error(err);
+      alert('パスワードの更新に失敗しました。\n※Firebaseのセキュリティルールで更新が許可されていない可能性があります。');
     }
   };
 
@@ -1007,7 +1014,7 @@ export default function App() {
                  セキュリティのため、初期パスワードからの変更が必要です。新しいパスワードを設定してください。
                </div>
                <div className="space-y-1">
-                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block text-left px-4">新しいパスワード (4文字以上)</label>
+                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block text-left px-4">新しいパスワード (6文字以上)</label>
                  <input 
                    type="password" 
                    required 
