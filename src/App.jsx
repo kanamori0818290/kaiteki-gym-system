@@ -2253,8 +2253,11 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
 
     const totalValidCount = validResInMonth.length;
     let totalValidHours = 0;
+    let totalUsersCount = 0; // ★ 月間延べ利用人数を追加
+
     validResInMonth.forEach(r => {
       totalValidHours += calculateDurationMinutes(r.startTime, r.endTime) / 60;
+      totalUsersCount += Number(r.userCount) || 0; // 人数を合算
     });
 
     const penaltyGivenCount = groups.reduce((acc, g) => acc + (g.penaltyCount > 0 ? 1 : 0), 0);
@@ -2278,7 +2281,7 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
         };
       });
 
-    return { totalValidCount, totalValidHours: totalValidHours.toFixed(1), cancelRate, penaltyGivenCount, top3 };
+    return { totalValidCount, totalValidHours: totalValidHours.toFixed(1), totalUsersCount, cancelRate, penaltyGivenCount, top3 };
   }, [reservations, groups, usageMonth]);
 
   const groupUsageStats = useMemo(() => {
@@ -2853,18 +2856,19 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
                 <span className="text-sm ml-1 opacity-80 font-bold">時間</span>
               </div>
             </div>
+            {/* ★ ペナルティ対象団体を外して、総利用人数を追加 */}
+            <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-5 rounded-3xl text-white shadow-lg flex flex-col justify-between">
+              <span className="text-[10px] font-black uppercase tracking-widest opacity-80 flex items-center justify-between">月間 延べ利用人数 <Users className="w-3 h-3 opacity-50"/></span>
+              <div className="flex items-baseline mt-2">
+                <span className="text-4xl font-black tracking-tighter">{governanceStats.totalUsersCount}</span>
+                <span className="text-sm ml-1 opacity-80 font-bold">名</span>
+              </div>
+            </div>
             <div className="bg-gradient-to-br from-orange-400 to-red-500 p-5 rounded-3xl text-white shadow-lg flex flex-col justify-between">
               <span className="text-[10px] font-black uppercase tracking-widest opacity-80 flex items-center justify-between">キャンセル率 <Info className="w-3 h-3 opacity-50"/></span>
               <div className="flex items-baseline mt-2">
                 <span className="text-4xl font-black tracking-tighter">{governanceStats.cancelRate}</span>
                 <span className="text-sm ml-1 opacity-80 font-bold">%</span>
-              </div>
-            </div>
-            <div className="bg-gradient-to-br from-gray-700 to-gray-900 p-5 rounded-3xl text-white shadow-lg flex flex-col justify-between">
-              <span className="text-[10px] font-black uppercase tracking-widest opacity-80 flex items-center justify-between">ペナルティ対象団体 <AlertOctagon className="w-3 h-3 opacity-50"/></span>
-              <div className="flex items-baseline mt-2">
-                <span className="text-4xl font-black tracking-tighter text-red-400">{governanceStats.penaltyGivenCount}</span>
-                <span className="text-sm ml-1 opacity-80 font-bold">団体</span>
               </div>
             </div>
           </div>
