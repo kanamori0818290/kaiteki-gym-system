@@ -18,7 +18,8 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'kaiteki-gym-production-v2';
+// ★ Canvasのプレビュー環境でも常に本番データを見れるように、パスを固定化（データ連動切れ対策）
+const appId = 'kaiteki-gym-production-v2';
 
 // ★アクセス保護用の共通パスワード
 const PORTAL_PASSWORD = "kaiteki-user";
@@ -441,6 +442,10 @@ function EditReservationModal({ reservation, groups, allReservations, isAdmin, o
     if (facilities.includes('体育館') && courts.length === 0) return alert("コートを選んでください。");
     if (startTime >= endTime) return alert("終了時間は開始時間より後に設定してください。");
 
+    if (!isAdmin && facilities.includes('体育館') && courts.length === 6) {
+      return alert("全面(6面)の予約は管理者のみ可能です。全面利用をご希望の場合は管理者へご相談ください。");
+    }
+
     if (!isAdmin && isWeekendOrHoliday(reservation.date)) {
       if (endTime > "17:00" || startTime >= "17:00") {
         return alert(`土日・祝日のため、通常は17:00以降の予約に変更できません。`);
@@ -473,16 +478,19 @@ function EditReservationModal({ reservation, groups, allReservations, isAdmin, o
     let currentTotalMinutes = 0;
     let currentSixCourtCount = 0;
     
-    const existingResInMonth = allReservations.filter(r => r.groupId === reservation.groupId && (r.date || "").startsWith(monthStr) && r.id !== reservation.id && r.status !== 'cancelled');
+    // ★ キャンセル枠消費分も含めるように修正
+    const existingResInMonth = allReservations.filter(r => r.groupId === reservation.groupId && (r.date || "").startsWith(monthStr) && r.id !== reservation.id);
     existingResInMonth.forEach(r => {
-      currentTotalMinutes += calculateDurationMinutes(r.startTime, r.endTime);
-      if (r.place?.includes('体育館') && Array.isArray(r.courts) && r.courts.length === 6) currentSixCourtCount++;
+      const isExemptCancel = r.status === 'cancelled' && (r.cancelReason === '災害等による特例免除' || r.cancelReason === '免除・枠戻し');
+      if (r.status !== 'cancelled' || (r.status === 'cancelled' && !isExemptCancel)) {
+        currentTotalMinutes += calculateDurationMinutes(r.startTime, r.endTime);
+        if (r.place?.includes('体育館') && Array.isArray(r.courts) && r.courts.length === 6) currentSixCourtCount++;
+      }
     });
 
     let requiresAdminOverride = false;
     let overrideMsgs = [];
 
-    // 日付に関するバリデーション（部活は当年の12月末まで）
     const today = new Date();
     const currentYear = today.getFullYear();
     const mccMaxDate = new Date(currentYear, 11, 31); 
@@ -580,7 +588,7 @@ function EditReservationModal({ reservation, groups, allReservations, isAdmin, o
           {facilities.includes('体育館') && (
             <div className="space-y-3 p-4 bg-gray-100 rounded-2xl">
               <label className="text-xs font-bold text-blue-800 flex justify-between">
-                <span>コート選択 <span className="text-[10px] font-normal text-blue-500 ml-2">※全面(6面)予約は月1回まで</span></span>
+                <span>コート選択 <span className="text-[10px] font-normal text-blue-500 ml-2">※全面(6面)予約は管理者のみ可能</span></span>
                 <span className="text-[10px] bg-blue-100 px-2 py-0.5 rounded-full">選択中: {courts.length}/6</span>
               </label>
               <div className="space-y-3">
@@ -827,12 +835,10 @@ export default function App() {
       localStorage.removeItem('gym_lockout_until');
 
       if (group.password === 'kaiteki-user' || !group.password) {
-        // 初期パスワードの場合は変更画面を表示
         setRequirePasswordChange(true);
       } else {
-        // それ以外はそのままログイン成功
         setIsPortalAuthorized(true);
-        setPortalPassInput(''); // セキュリティのためクリア
+        setPortalPassInput(''); 
       }
     } else {
       const newAttempts = loginAttempts + 1;
@@ -1548,6 +1554,10 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
 
     if (selectedFacilities.includes('体育館') && selectedCourts.length === 0) return alert("コート(A-F)を選んでください。");
 
+    if (!isAdmin && selectedFacilities.includes('体育館') && selectedCourts.length === 6) {
+      return alert("全面(6面)の予約は管理者のみ可能です。全面利用をご希望の場合は管理者へご相談ください。");
+    }
+
     if (!selectedGroupData) return alert("団体が見つかりません。");
 
     if (selectedGroupData.penaltyUntil) {
@@ -1862,7 +1872,7 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
                 {selectedFacilities.includes('体育館') && (
                   <div className="space-y-4 animate-in zoom-in duration-300 px-2">
                     <label className="text-xs font-bold text-blue-800 flex justify-between px-1">
-                      <span>コート選択 * <span className="text-[10px] font-normal text-blue-500 ml-2">※全面(6面)予約は月1回まで</span></span>
+                      <span>コート選択 * <span className="text-[10px] font-normal text-blue-500 ml-2">※全面(6面)予約は管理者のみ可能</span></span>
                       <span className="text-[10px] bg-blue-100 px-2 py-0.5 rounded-full">選択中: {selectedCourts.length}/6</span>
                     </label>
                     <div className="grid grid-cols-1 gap-2 p-5 bg-gray-100 rounded-[2rem] shadow-inner border-2 border-white">
@@ -2238,7 +2248,7 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
   // ★ ガバナンス・分析データ（DX指標）の計算
   const governanceStats = useMemo(() => {
     const resInMonth = reservations.filter(r => (r.date || "").startsWith(usageMonth));
-    const validResInMonth = resInMonth.filter(r => r.status !== 'cancelled');
+    const validResInMonth = resInMonth.filter(r => r.status !== 'cancelled' || (r.status === 'cancelled' && r.cancelReason !== '災害等による特例免除' && r.cancelReason !== '免除・枠戻し'));
     const cancelledResInMonth = resInMonth.filter(r => r.status === 'cancelled');
 
     const totalValidCount = validResInMonth.length;
@@ -2270,6 +2280,60 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
 
     return { totalValidCount, totalValidHours: totalValidHours.toFixed(1), cancelRate, penaltyGivenCount, top3 };
   }, [reservations, groups, usageMonth]);
+
+  const groupUsageStats = useMemo(() => {
+    const statsMap = new Map();
+    
+    groups.forEach(g => {
+      statsMap.set(g.id, {
+        id: g.id,
+        name: g.name,
+        authId: g.authId,
+        type: g.type,
+        limitType: g.limitType || (g.isExemptFromLimit ? 'unlimited' : '20'),
+        usedMinutes: 0,
+        totalResCount: 0,
+        cancelCount: 0,
+        totalUsers: 0
+      });
+    });
+
+    const resInMonth = reservations.filter(r => (r.date || "").startsWith(usageMonth));
+    resInMonth.forEach(r => {
+      let groupStat = statsMap.get(r.groupId);
+      if (!groupStat) {
+        groupStat = {
+          id: r.groupId,
+          name: r.name || '削除済み団体',
+          authId: '???',
+          type: 'unknown',
+          limitType: 'unlimited',
+          usedMinutes: 0,
+          totalResCount: 0,
+          cancelCount: 0,
+          totalUsers: 0
+        };
+        statsMap.set(r.groupId, groupStat);
+      }
+      
+      groupStat.totalResCount++;
+      const isExemptCancel = r.status === 'cancelled' && (r.cancelReason === '災害等による特例免除' || r.cancelReason === '免除・枠戻し');
+      
+      if (r.status === 'cancelled') {
+        groupStat.cancelCount++;
+      }
+      
+      if (!isExemptCancel) {
+        groupStat.usedMinutes += calculateDurationMinutes(r.startTime, r.endTime);
+        groupStat.totalUsers += Number(r.userCount) || 0;
+      }
+    });
+
+    return Array.from(statsMap.values()).map(s => {
+      s.cancelRate = s.totalResCount > 0 ? Math.round((s.cancelCount / s.totalResCount) * 100) : 0;
+      return s;
+    }).sort((a, b) => b.usedMinutes - a.usedMinutes);
+  }, [groups, reservations, usageMonth]);
 
   const handleUpdateAnnouncement = async () => {
     try {
@@ -2324,26 +2388,6 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
       (g.name || "").includes(groupSearchTerm) || (g.authId || "").toUpperCase().includes(groupSearchTerm.toUpperCase())
     );
   }, [groups, groupSearchTerm]);
-
-  const groupUsageStats = useMemo(() => {
-    const stats = groups.map(g => ({
-      id: g.id,
-      name: g.name,
-      authId: g.authId,
-      type: g.type,
-      limitType: g.limitType || (g.isExemptFromLimit ? 'unlimited' : '20'),
-      usedMinutes: 0
-    }));
-
-    const resInMonth = reservations.filter(r => (r.date || "").startsWith(usageMonth));
-    resInMonth.forEach(r => {
-      const groupStat = stats.find(s => s.id === r.groupId);
-      if (groupStat) {
-        groupStat.usedMinutes += calculateDurationMinutes(r.startTime, r.endTime);
-      }
-    });
-    return stats.sort((a, b) => b.usedMinutes - a.usedMinutes);
-  }, [groups, reservations, usageMonth]);
 
   const periodOptions = useMemo(() => {
     const months = new Set();
@@ -2871,16 +2915,26 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
 
                   return (
                     <div key={stat.id} className="flex items-center justify-between gap-4 text-xs group">
-                      <div className="w-2/5 font-bold text-gray-600 truncate" title={`${stat.name} (${stat.authId})`}>
-                        <span className="text-[9px] text-gray-400 mr-1">[{stat.authId}]</span>
-                        {stat.name}
+                      <div className="w-1/3 font-bold text-gray-600 flex items-center gap-1.5 truncate" title={`${stat.name} (${stat.authId})`}>
+                        <span className="text-[9px] text-gray-400 shrink-0">[{stat.authId}]</span>
+                        <span className="truncate">{stat.name}</span>
+                        {stat.cancelRate > 0 && (
+                           <span className={`text-[8px] px-1.5 py-0.5 rounded shrink-0 ${stat.cancelRate >= 30 ? 'bg-red-100 text-red-600 border border-red-200' : 'bg-gray-100 text-gray-500 border border-gray-200'}`} title="当月のキャンセル率">
+                             ｷｬﾝｾﾙ {stat.cancelRate}%
+                           </span>
+                        )}
                       </div>
                       <div className="flex-1 bg-gray-100 rounded-full h-1.5 relative overflow-hidden">
                         <div className={`absolute top-0 left-0 h-full ${barColor} transition-all duration-500`} style={{ width: `${percentage}%` }}></div>
                       </div>
-                      <div className="w-1/4 text-right font-black text-gray-600 flex flex-col items-end">
-                        <span className={percentage >= 100 && !isUnlimited ? 'text-red-500' : ''}>{usedHours}h</span>
-                        <span className="text-[8px] text-gray-400 font-bold">/ {isUnlimited ? '無制限' : `${limitHours}h`}</span>
+                      <div className="w-auto text-right font-black text-gray-600 flex flex-col items-end shrink-0">
+                        <div className="flex items-center gap-2">
+                           <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded flex items-center">
+                             <Users className="w-3 h-3 mr-1" />{stat.totalUsers}名
+                           </span>
+                           <span className={`text-sm ${percentage >= 100 && !isUnlimited ? 'text-red-500' : ''}`}>{usedHours}h</span>
+                        </div>
+                        <span className="text-[8px] text-gray-400 font-bold mt-0.5">/ {isUnlimited ? '無制限' : `${limitHours}h`}</span>
                       </div>
                     </div>
                   )
