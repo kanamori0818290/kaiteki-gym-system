@@ -442,8 +442,8 @@ function EditReservationModal({ reservation, groups, allReservations, isAdmin, o
     if (facilities.includes('体育館') && courts.length === 0) return alert("コートを選んでください。");
     if (startTime >= endTime) return alert("終了時間は開始時間より後に設定してください。");
 
-    if (!isAdmin && facilities.includes('体育館') && courts.length === 6) {
-      return alert("全面(6面)の予約は管理者のみ可能です。全面利用をご希望の場合は管理者へご相談ください。");
+    if (!isAdmin && facilities.includes('体育館') && courts.length > 3) {
+      return alert("体育館の利用は最大3面までです。4面以上（全面など）のご利用は原則禁止されています。");
     }
 
     if (!isAdmin && isWeekendOrHoliday(reservation.date)) {
@@ -473,10 +473,8 @@ function EditReservationModal({ reservation, groups, allReservations, isAdmin, o
     const monthStr = (reservation.date || "").substring(0, 7);
 
     const newMinutes = calculateDurationMinutes(startTime, endTime);
-    const newSixCourts = facilities.includes('体育館') && courts.length === 6 ? 1 : 0;
 
     let currentTotalMinutes = 0;
-    let currentSixCourtCount = 0;
     
     // ★ キャンセル枠消費分も含めるように修正
     const existingResInMonth = allReservations.filter(r => r.groupId === reservation.groupId && (r.date || "").startsWith(monthStr) && r.id !== reservation.id);
@@ -484,40 +482,42 @@ function EditReservationModal({ reservation, groups, allReservations, isAdmin, o
       const isExemptCancel = r.status === 'cancelled' && (r.cancelReason === '災害等による特例免除' || r.cancelReason === '免除・枠戻し');
       if (r.status !== 'cancelled' || (r.status === 'cancelled' && !isExemptCancel)) {
         currentTotalMinutes += calculateDurationMinutes(r.startTime, r.endTime);
-        if (r.place?.includes('体育館') && Array.isArray(r.courts) && r.courts.length === 6) currentSixCourtCount++;
       }
     });
 
     let requiresAdminOverride = false;
     let overrideMsgs = [];
 
-    const today = new Date();
-    const currentYear = today.getFullYear();
-    const mccMaxDate = new Date(currentYear, 11, 31); 
-    const employeeMaxDate = new Date();
-    employeeMaxDate.setMonth(employeeMaxDate.getMonth() + 3);
-    const externalMaxDate = new Date();
-    externalMaxDate.setMonth(externalMaxDate.getMonth() + 2);
+    const now = new Date();
+    let baseMonthDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    // 1日の昼12時までは「前月」を基準とする
+    if (now.getDate() === 1 && now.getHours() < 12) {
+      baseMonthDate.setMonth(baseMonthDate.getMonth() - 1);
+    }
+    
+    const getEndOfMonth = (base, addMonths) => {
+      return new Date(base.getFullYear(), base.getMonth() + addMonths + 1, 0, 23, 59, 59);
+    };
+
+    const mccMaxDate = getEndOfMonth(baseMonthDate, 12);
+    const employeeMaxDate = getEndOfMonth(baseMonthDate, 3);
+    const externalMaxDate = getEndOfMonth(baseMonthDate, 2);
 
     const targetDateObj = new Date(reservation.date);
     
     if (groupData.type === 'mcc' && targetDateObj > mccMaxDate) {
-      overrideMsgs.push(`・会社の部活の予約可能期間（年内12月末まで）を超えています。`);
+      overrideMsgs.push(`・会社の部活の予約可能期間（${mccMaxDate.getFullYear()}年${mccMaxDate.getMonth()+1}月末まで）を超えています。`);
       requiresAdminOverride = true;
     } else if (groupData.type === 'employee' && targetDateObj > employeeMaxDate) {
-      overrideMsgs.push(`・従業員の予約可能期間（3ヶ月先まで）を超えています。`);
+      overrideMsgs.push(`・従業員の予約可能期間（${employeeMaxDate.getFullYear()}年${employeeMaxDate.getMonth()+1}月末まで）を超えています。`);
       requiresAdminOverride = true;
     } else if (groupData.type === 'external' && targetDateObj > externalMaxDate) {
-      overrideMsgs.push(`・一般・団体の予約可能期間（2ヶ月先まで）を超えています。`);
+      overrideMsgs.push(`・一般・団体の予約可能期間（${externalMaxDate.getFullYear()}年${externalMaxDate.getMonth()+1}月末まで）を超えています。`);
       requiresAdminOverride = true;
     }
 
     if (!isExempt && currentTotalMinutes + newMinutes > limitMinutes) {
       overrideMsgs.push(`・月間予約上限（${limitMinutes/60}時間）を超過します。`);
-      requiresAdminOverride = true;
-    }
-    if (groupData.type !== 'soumu' && newSixCourts && currentSixCourtCount + newSixCourts > 1) {
-      overrideMsgs.push(`・全面(6面)予約の月間上限(1回)を超過します。`);
       requiresAdminOverride = true;
     }
 
@@ -587,8 +587,8 @@ function EditReservationModal({ reservation, groups, allReservations, isAdmin, o
 
           {facilities.includes('体育館') && (
             <div className="space-y-3 p-4 bg-gray-100 rounded-2xl">
-              <label className="text-xs font-bold text-blue-800 flex justify-between">
-                <span>コート選択 <span className="text-[10px] font-normal text-blue-500 ml-2">※全面(6面)予約は管理者のみ可能</span></span>
+              <label className="text-xs font-bold text-blue-800 flex justify-between px-1">
+                <span>コート選択 * <span className="text-[10px] font-normal text-red-500 ml-2">※最大3面まで（4面以上は原則禁止）</span></span>
                 <span className="text-[10px] bg-blue-100 px-2 py-0.5 rounded-full">選択中: {courts.length}/6</span>
               </label>
               <div className="space-y-3">
@@ -1554,8 +1554,8 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
 
     if (selectedFacilities.includes('体育館') && selectedCourts.length === 0) return alert("コート(A-F)を選んでください。");
 
-    if (!isAdmin && selectedFacilities.includes('体育館') && selectedCourts.length === 6) {
-      return alert("全面(6面)の予約は管理者のみ可能です。全面利用をご希望の場合は管理者へご相談ください。");
+    if (!isAdmin && selectedFacilities.includes('体育館') && selectedCourts.length > 3) {
+      return alert("体育館の利用は最大3面までです。4面以上（全面など）のご利用は原則禁止されています。");
     }
 
     if (!selectedGroupData) return alert("団体が見つかりません。");
@@ -1577,26 +1577,33 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
       requiresAdminOverride = true;
     }
 
-    const today = new Date();
-    const currentYear = today.getFullYear();
-    const mccMaxDate = new Date(currentYear, 11, 31); 
-    const employeeMaxDate = new Date();
-    employeeMaxDate.setMonth(employeeMaxDate.getMonth() + 3);
-    const externalMaxDate = new Date();
-    externalMaxDate.setMonth(externalMaxDate.getMonth() + 2);
+    const now = new Date();
+    let baseMonthDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    // 1日の昼12時までは「前月」を基準とする
+    if (now.getDate() === 1 && now.getHours() < 12) {
+      baseMonthDate.setMonth(baseMonthDate.getMonth() - 1);
+    }
+    
+    const getEndOfMonth = (base, addMonths) => {
+      return new Date(base.getFullYear(), base.getMonth() + addMonths + 1, 0, 23, 59, 59);
+    };
+
+    const mccMaxDate = getEndOfMonth(baseMonthDate, 12);
+    const employeeMaxDate = getEndOfMonth(baseMonthDate, 3);
+    const externalMaxDate = getEndOfMonth(baseMonthDate, 2);
 
     for (const d of partitionedDates.valid) {
       const targetDateObj = new Date(d);
       if (userType === 'mcc' && targetDateObj > mccMaxDate) {
-        adminOverrideMessages.push(`・会社の部活の予約可能期間（年内12月末まで）を超えています。`);
+        adminOverrideMessages.push(`・会社の部活の予約可能期間（${mccMaxDate.getFullYear()}年${mccMaxDate.getMonth()+1}月末まで）を超えています。`);
         requiresAdminOverride = true; break;
       }
       if (userType === 'employee' && targetDateObj > employeeMaxDate) {
-        adminOverrideMessages.push(`・従業員の予約可能期間（3ヶ月先まで）を超えています。`);
+        adminOverrideMessages.push(`・従業員の予約可能期間（${employeeMaxDate.getFullYear()}年${employeeMaxDate.getMonth()+1}月末まで）を超えています。`);
         requiresAdminOverride = true; break;
       }
       if (userType === 'external' && targetDateObj > externalMaxDate) {
-        adminOverrideMessages.push(`・一般・団体の予約可能期間（2ヶ月先まで）を超えています。`);
+        adminOverrideMessages.push(`・一般・団体の予約可能期間（${externalMaxDate.getFullYear()}年${externalMaxDate.getMonth()+1}月末まで）を超えています。`);
         requiresAdminOverride = true; break;
       }
     }
@@ -1611,7 +1618,6 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
     }
 
     const newBookingMinutes = calculateDurationMinutes(formData.startTime, formData.endTime);
-    const isSixCourts = selectedFacilities.includes('体育館') && selectedCourts.length === 6;
 
     const monthlyNewBookings = {};
     partitionedDates.valid.forEach(d => {
@@ -1630,23 +1636,14 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
       const existingResInMonth = reservations.filter(r => r.groupId === currentGroupId && (r.date || "").startsWith(monthStr) && r.status !== 'cancelled');
       
       let currentTotalMinutes = 0;
-      let currentSixCourtCount = 0;
 
       existingResInMonth.forEach(r => {
         currentTotalMinutes += calculateDurationMinutes(r.startTime, r.endTime);
-        if (r.place?.includes('体育館') && Array.isArray(r.courts) && r.courts.length === 6) {
-          currentSixCourtCount++;
-        }
       });
 
       if (!isExempt && currentTotalMinutes + additionalMinutes > limitMinutes) {
         const limitLabel = limitType === '30' ? '30' : '20';
         adminOverrideMessages.push(`・【${monthStr}】の月間予約上限（${limitLabel}時間）を超過します。（今回追加で ${additionalMinutes / 60}h）`);
-        requiresAdminOverride = true;
-      }
-
-      if (userType !== 'soumu' && isSixCourts && (currentSixCourtCount + newCount > 1)) {
-        adminOverrideMessages.push(`・【${monthStr}】の全面(6面)予約の月間上限(1回)を超過します。`);
         requiresAdminOverride = true;
       }
     }
@@ -1872,7 +1869,7 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
                 {selectedFacilities.includes('体育館') && (
                   <div className="space-y-4 animate-in zoom-in duration-300 px-2">
                     <label className="text-xs font-bold text-blue-800 flex justify-between px-1">
-                      <span>コート選択 * <span className="text-[10px] font-normal text-blue-500 ml-2">※全面(6面)予約は管理者のみ可能</span></span>
+                      <span>コート選択 * <span className="text-[10px] font-normal text-red-500 ml-2">※最大3面まで（4面以上は原則禁止）</span></span>
                       <span className="text-[10px] bg-blue-100 px-2 py-0.5 rounded-full">選択中: {selectedCourts.length}/6</span>
                     </label>
                     <div className="grid grid-cols-1 gap-2 p-5 bg-gray-100 rounded-[2rem] shadow-inner border-2 border-white">
@@ -2856,7 +2853,6 @@ function AdminDashboard({ reservations, closedDays, groups, reports, currentAnno
                 <span className="text-sm ml-1 opacity-80 font-bold">時間</span>
               </div>
             </div>
-            {/* ★ ペナルティ対象団体を外して、総利用人数を追加 */}
             <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-5 rounded-3xl text-white shadow-lg flex flex-col justify-between">
               <span className="text-[10px] font-black uppercase tracking-widest opacity-80 flex items-center justify-between">月間 延べ利用人数 <Users className="w-3 h-3 opacity-50"/></span>
               <div className="flex items-baseline mt-2">
@@ -3445,29 +3441,37 @@ function RulesView() {
             </div>
           </section>
           <section>
-            <h3 className="flex items-center text-blue-800 text-2xl mb-8 border-l-[10px] border-blue-700 pl-6 tracking-tight font-black">② 予約期間と上限</h3>
-            <div className="bg-blue-50 p-8 rounded-[3rem] space-y-6 shadow-inner border-2 border-white">
+            <h3 className="flex items-center text-blue-800 text-2xl mb-8 border-l-[10px] border-blue-700 pl-6 tracking-tight font-black">② 予約の開放日と期間</h3>
+            <div className="bg-blue-50 p-6 sm:p-8 rounded-[3rem] space-y-4 shadow-inner border-2 border-white">
+              <p className="text-base sm:text-lg font-bold text-blue-900 mb-2 text-center bg-white p-3 rounded-2xl shadow-sm border border-blue-100">
+                新しい予約枠は、<span className="text-orange-600 font-black text-xl mx-1">毎月1日の昼12:00</span> に自動開放されます。
+              </p>
               <div className="bg-white p-4 rounded-2xl border-2 border-purple-100 shadow-sm">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded font-black">会社の部活</span>
-                  <span className="text-sm font-bold text-gray-800">年内（12月末）まで</span>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded font-black whitespace-nowrap">会社の部活</span>
+                    <span className="text-sm font-bold text-gray-800">1年先の1ヶ月分を開放</span>
+                  </div>
+                  <span className="text-xs text-gray-500 font-bold bg-gray-50 px-2 py-1 rounded border border-gray-100">例: 10/1 に 翌年10月分 が開放</span>
                 </div>
               </div>
               <div className="bg-white p-4 rounded-2xl border-2 border-blue-100 shadow-sm">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded font-black">従業員</span>
-                  <span className="text-sm font-bold text-gray-800">3ヶ月先まで予約可能</span>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded font-black whitespace-nowrap">従業員</span>
+                    <span className="text-sm font-bold text-gray-800">3ヶ月先の1ヶ月分を開放</span>
+                  </div>
+                  <span className="text-xs text-gray-500 font-bold bg-gray-50 px-2 py-1 rounded border border-gray-100">例: 10/1 に 1月分 が開放</span>
                 </div>
               </div>
               <div className="bg-white p-4 rounded-2xl border-2 border-green-100 shadow-sm">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded font-black">一般・団体</span>
-                  <span className="text-sm font-bold text-gray-800">2ヶ月先まで予約可能</span>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded font-black whitespace-nowrap">一般・団体</span>
+                    <span className="text-sm font-bold text-gray-800">2ヶ月先の1ヶ月分を開放</span>
+                  </div>
+                  <span className="text-xs text-gray-500 font-bold bg-gray-50 px-2 py-1 rounded border border-gray-100">例: 10/1 に 12月分 が開放</span>
                 </div>
-              </div>
-              <div className="mt-4 space-y-3 pt-4 border-t-2 border-blue-100/50 text-xs font-black text-blue-900">
-                 <p className="border-l-4 border-blue-500 pl-2">月間利用制限：時間無制限</p>
-                 <p className="border-l-4 border-blue-500 pl-2">全面予約制限：体育館6面予約は月1回まで</p>
               </div>
             </div>
           </section>
