@@ -143,21 +143,6 @@ const generateHolidaysForYear = (year) => {
 
   hols.sort();
   const finalHols = new Set(hols);
-  
-  hols.forEach(hDateStr => {
-    const d = new Date(hDateStr);
-    if (d.getDay() === 0) {
-      let nextDay = new Date(d);
-      while(true) {
-        nextDay.setDate(nextDay.getDate() + 1);
-        const nextStr = formatDateStr(nextDay);
-        if (!finalHols.has(nextStr)) {
-          finalHols.add(nextStr);
-          break;
-        }
-      }
-    }
-  });
 
   const keiroDate = keiroDay.getDate();
   if (autumnEquinox - keiroDate === 2) {
@@ -500,8 +485,8 @@ function EditReservationModal({ reservation, groups, allReservations, isAdmin, o
     };
 
     const mccMaxDate = getEndOfMonth(baseMonthDate, 12);
-    const employeeMaxDate = getEndOfMonth(baseMonthDate, 3);
-    const externalMaxDate = getEndOfMonth(baseMonthDate, 2);
+    const employeeMaxDate = getEndOfMonth(baseMonthDate, 2);
+    const externalMaxDate = getEndOfMonth(baseMonthDate, 1);
 
     const targetDateObj = new Date(reservation.date);
     
@@ -1589,8 +1574,8 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
     };
 
     const mccMaxDate = getEndOfMonth(baseMonthDate, 12);
-    const employeeMaxDate = getEndOfMonth(baseMonthDate, 3);
-    const externalMaxDate = getEndOfMonth(baseMonthDate, 2);
+    const employeeMaxDate = getEndOfMonth(baseMonthDate, 2);
+    const externalMaxDate = getEndOfMonth(baseMonthDate, 1);
 
     for (const d of partitionedDates.valid) {
       const targetDateObj = new Date(d);
@@ -3459,18 +3444,18 @@ function RulesView() {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <span className="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded font-black whitespace-nowrap">従業員</span>
-                    <span className="text-sm font-bold text-gray-800">3ヶ月先の1ヶ月分を開放</span>
+                    <span className="text-sm font-bold text-gray-800">2ヶ月先の1ヶ月分を開放</span>
                   </div>
-                  <span className="text-xs text-gray-500 font-bold bg-gray-50 px-2 py-1 rounded border border-gray-100">例: 10/1 に 1月分 が開放</span>
+                  <span className="text-xs text-gray-500 font-bold bg-gray-50 px-2 py-1 rounded border border-gray-100">例: 10/1 に 12月分 が開放</span>
                 </div>
               </div>
               <div className="bg-white p-4 rounded-2xl border-2 border-green-100 shadow-sm">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded font-black whitespace-nowrap">一般・団体</span>
-                    <span className="text-sm font-bold text-gray-800">2ヶ月先の1ヶ月分を開放</span>
+                    <span className="text-sm font-bold text-gray-800">1ヶ月先の1ヶ月分を開放</span>
                   </div>
-                  <span className="text-xs text-gray-500 font-bold bg-gray-50 px-2 py-1 rounded border border-gray-100">例: 10/1 に 12月分 が開放</span>
+                  <span className="text-xs text-gray-500 font-bold bg-gray-50 px-2 py-1 rounded border border-gray-100">例: 10/1 に 11月分 が開放</span>
                 </div>
               </div>
             </div>
