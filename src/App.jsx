@@ -143,6 +143,21 @@ const generateHolidaysForYear = (year) => {
 
   hols.sort();
   const finalHols = new Set(hols);
+  
+  hols.forEach(hDateStr => {
+    const d = new Date(hDateStr);
+    if (d.getDay() === 0) {
+      let nextDay = new Date(d);
+      while(true) {
+        nextDay.setDate(nextDay.getDate() + 1);
+        const nextStr = formatDateStr(nextDay);
+        if (!finalHols.has(nextStr)) {
+          finalHols.add(nextStr);
+          break;
+        }
+      }
+    }
+  });
 
   const keiroDate = keiroDay.getDate();
   if (autumnEquinox - keiroDate === 2) {
@@ -247,17 +262,11 @@ function TimeGridSelector({ selectedDate, reservations, currentStartTime, curren
 
   const occupiedMap = useMemo(() => {
     const map = {};
-    const isHolidayOrWeekend = isWeekendOrHoliday(selectedDate);
 
     RESOURCES.forEach((res, rIndex) => {
       TIME_SLOTS.forEach((t, cIndex) => {
         const start = t;
         const end = END_TIMES[cIndex];
-
-        if (!isAdmin && isHolidayOrWeekend && start >= "17:00") {
-           map[`${rIndex}-${cIndex}`] = true;
-           return;
-        }
 
         const isOccupied = reservations.some(r => {
           if (r.date !== selectedDate) return false;
@@ -431,12 +440,6 @@ function EditReservationModal({ reservation, groups, allReservations, isAdmin, o
       return alert("体育館の利用は最大3面までです。4面以上（全面など）のご利用は原則禁止されています。");
     }
 
-    if (!isAdmin && isWeekendOrHoliday(reservation.date)) {
-      if (endTime > "17:00" || startTime >= "17:00") {
-        return alert(`土日・祝日のため、通常は17:00以降の予約に変更できません。`);
-      }
-    }
-
     if (facilities.includes('体育館')) {
       const conflict = courts.some(c => occupiedCourts.includes(c));
       if (conflict) return alert(`指定のコートは既に予約されています。時間を変更してください。`);
@@ -485,8 +488,8 @@ function EditReservationModal({ reservation, groups, allReservations, isAdmin, o
     };
 
     const mccMaxDate = getEndOfMonth(baseMonthDate, 12);
-    const employeeMaxDate = getEndOfMonth(baseMonthDate, 2);
-    const externalMaxDate = getEndOfMonth(baseMonthDate, 1);
+    const employeeMaxDate = getEndOfMonth(baseMonthDate, 2); // 変更: 2ヶ月先
+    const externalMaxDate = getEndOfMonth(baseMonthDate, 1); // 変更: 1ヶ月先
 
     const targetDateObj = new Date(reservation.date);
     
@@ -1476,24 +1479,18 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
   const partitionedDates = useMemo(() => {
     const valid = [];
     const closed = [];
-    const holidayExcluded = [];
     
-    const isLateTime = formData.endTime > "17:00" || formData.startTime >= "17:00";
-
     targetDates.forEach(d => {
       if (closedDateStrs.includes(d)) {
         closed.push(d);
-      } else if (isRecurring && isLateTime && isWeekendOrHoliday(d)) {
-        holidayExcluded.push(d);
       } else {
         valid.push(d);
       }
     });
-    return { valid, closed, holidayExcluded };
+    return { valid, closed };
   }, [targetDates, closedDateStrs, isRecurring, formData.startTime, formData.endTime]);
 
   const hasClosedDayInTargets = partitionedDates.closed.length > 0;
-  const hasHolidayExcludedInTargets = partitionedDates.holidayExcluded.length > 0;
 
   const getOccupiedCourts = (date) => {
     if (!date || !formData.startTime || !formData.endTime || !selectedFacilities.includes('体育館')) return [];
@@ -1593,15 +1590,6 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
       }
     }
 
-    for (const d of partitionedDates.valid) {
-      if (isWeekendOrHoliday(d)) {
-        if (formData.endTime > "17:00" || formData.startTime >= "17:00") {
-          adminOverrideMessages.push(`・${d} は土日・祝日のため、通常は17:00以降の予約はできません。`);
-          requiresAdminOverride = true; break;
-        }
-      }
-    }
-
     const newBookingMinutes = calculateDurationMinutes(formData.startTime, formData.endTime);
 
     const monthlyNewBookings = {};
@@ -1693,10 +1681,9 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
       
       const skippedReasons = [];
       if (partitionedDates.closed.length > 0) skippedReasons.push('休館日');
-      if (partitionedDates.holidayExcluded.length > 0) skippedReasons.push('17時以降の土日祝');
 
       if (skippedReasons.length > 0) {
-        const allSkippedDates = [...partitionedDates.closed, ...partitionedDates.holidayExcluded].sort();
+        const allSkippedDates = [...partitionedDates.closed].sort();
         successMsg = `一部の日程を除外して予約が完了しました。\n※除外された日程（${skippedReasons.join('・')}）：\n${allSkippedDates.join(', ')}`;
       }
       onSuccess(successMsg);
@@ -1786,11 +1773,6 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
                       <p className="text-amber-700 text-[10px] font-black flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> 休館日が含まれています（自動除外）</p>
                     </div>
                   )}
-                  {hasHolidayExcludedInTargets && (
-                    <div className="bg-amber-50 border border-amber-200 p-2 rounded-lg mt-2 space-y-1">
-                      <p className="text-amber-700 text-[10px] font-black flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> 17時以降のため土日・祝日を除外します</p>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
@@ -1800,7 +1782,7 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
                 <MousePointerClick className="w-5 h-5" /> 
                 スケジュールアシスタント（ドラッグ＆ドロップで予約）
               </label>
-              <p className="text-[10px] text-gray-500 font-bold mb-2">※ 以下の表で予約したい「時間」と「場所」をマウスでなぞると、自動で入力されます。<br/>※ 土日・祝日はシステム上 17:00 までのご利用となります。</p>
+              <p className="text-[10px] text-gray-500 font-bold mb-2">※ 以下の表で予約したい「時間」と「場所」をマウスでなぞると、自動で入力されます。<br/>※ 土日・祝日も 21:00 までご利用いただけます。</p>
               
               {selectedDate && !isSelectedDateClosed ? (
                 <TimeGridSelector 
@@ -3197,8 +3179,7 @@ function WeeklyPrintView({ reservations, closedDays, weekStartStr, onBack }) {
                                 );
                                 cIndex += span;
                               } else {
-                                const isRestricted = isWeekendOrHoliday(d) && start >= "17:00";
-                                if (isClosed || isRestricted) {
+                                if (isClosed) {
                                   cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''} bg-[repeating-linear-gradient(45deg,rgba(0,0,0,0.05),rgba(0,0,0,0.05)_4px,rgba(0,0,0,0.1)_4px,rgba(0,0,0,0.1)_8px)]`}></td>);
                                 } else {
                                   cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''}`}></td>);
@@ -3369,8 +3350,7 @@ function MonthlyPrintView({ reservations, closedDays, monthStr, onBack }) {
                                 );
                                 cIndex += span;
                               } else {
-                                const isRestricted = isWeekendOrHoliday(d) && start >= "17:00";
-                                if (isClosed || isRestricted) {
+                                if (isClosed) {
                                   cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''} bg-[repeating-linear-gradient(45deg,rgba(0,0,0,0.05),rgba(0,0,0,0.05)_4px,rgba(0,0,0,0.1)_4px,rgba(0,0,0,0.1)_8px)]`}></td>);
                                 } else {
                                   cells.push(<td key={start} className={`border-gray-300 ${!isLastSlot ? 'border-r' : ''}`}></td>);
@@ -3418,7 +3398,7 @@ function RulesView() {
             <div className="bg-gray-50 p-8 rounded-[3rem] space-y-8 shadow-inner border-2 border-white leading-relaxed">
               <div className="space-y-4">
                 <div className="flex justify-between items-center text-xl"><span>平日</span><span className="bg-gray-900 text-white px-5 py-1.5 rounded-2xl shadow-xl font-mono">8:30 - 21:00</span></div>
-                <div className="flex justify-between items-center text-xl"><span>土日・祝日</span><span className="bg-gray-900 text-white px-5 py-1.5 rounded-2xl shadow-xl font-mono">8:30 - 17:00</span></div>
+                <div className="flex justify-between items-center text-xl"><span>土日・祝日</span><span className="bg-gray-900 text-white px-5 py-1.5 rounded-2xl shadow-xl font-mono">8:30 - 21:00</span></div>
               </div>
               <div className="pt-8 border-t-2 border-gray-100 space-y-4">
                 <p className="text-base text-blue-600 font-black tracking-tighter leading-none">日曜日もご予約・ご利用いただけます。</p>
