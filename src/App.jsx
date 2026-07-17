@@ -579,21 +579,25 @@ function EditReservationModal({ reservation, groups, allReservations, isAdmin, o
                 <span>コート選択 * <span className="text-[10px] font-normal text-red-500 ml-2">※最大3面まで（4面以上は原則禁止）</span></span>
                 <span className="text-[10px] bg-blue-100 px-2 py-0.5 rounded-full">選択中: {courts.length}/6</span>
               </label>
-              <div className="space-y-3">
-                <p className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">用具側</p>
-                <div className="flex space-x-3 justify-center">
-                  {['A', 'B', 'C'].map(c => (
-                    <CourtButton key={c} label={c} active={courts.includes(c)} occupied={occupiedCourts.includes(c)} onClick={() => toggleCourt(c)} />
-                  ))}
+              <div className="flex justify-center items-center gap-4 py-2">
+                <div className="flex items-center">
+                  <p className="text-xs font-black text-gray-400 [writing-mode:vertical-rl] tracking-widest mr-2">用具側</p>
+                  <div className="flex flex-col gap-3">
+                    {['A', 'B', 'C'].map(c => (
+                      <CourtButton key={c} label={c} active={courts.includes(c)} occupied={occupiedCourts.includes(c)} onClick={() => toggleCourt(c)} />
+                    ))}
+                  </div>
                 </div>
-              </div>
-              <div className="my-1 border-b border-gray-200 w-2/3 mx-auto"></div>
-              <div className="space-y-3">
-                <p className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">入口側</p>
-                <div className="flex space-x-3 justify-center">
-                  {['D', 'E', 'F'].map(c => (
-                    <CourtButton key={c} label={c} active={courts.includes(c)} occupied={occupiedCourts.includes(c)} onClick={() => toggleCourt(c)} />
-                  ))}
+                
+                <div className="w-1 h-48 bg-gray-200 rounded-full mx-2"></div>
+                
+                <div className="flex items-center">
+                  <div className="flex flex-col gap-3">
+                    {['D', 'E', 'F'].map(c => (
+                      <CourtButton key={c} label={c} active={courts.includes(c)} occupied={occupiedCourts.includes(c)} onClick={() => toggleCourt(c)} />
+                    ))}
+                  </div>
+                  <p className="text-xs font-black text-gray-400 [writing-mode:vertical-rl] tracking-widest ml-2">入口側</p>
                 </div>
               </div>
             </div>
@@ -1839,23 +1843,25 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
                       <span>コート選択 * <span className="text-[10px] font-normal text-red-500 ml-2">※最大3面まで（4面以上は原則禁止）</span></span>
                       <span className="text-[10px] bg-blue-100 px-2 py-0.5 rounded-full">選択中: {selectedCourts.length}/6</span>
                     </label>
-                    <div className="grid grid-cols-1 gap-2 p-5 bg-gray-100 rounded-[2rem] shadow-inner border-2 border-white">
-                      <div className="space-y-3">
-                        <p className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">用具側</p>
-                        <div className="flex space-x-3 justify-center">
+                    <div className="flex justify-center items-center gap-6 p-5 bg-gray-100 rounded-[2rem] shadow-inner border-2 border-white">
+                      <div className="flex items-center">
+                        <p className="text-sm font-black text-gray-400 [writing-mode:vertical-rl] tracking-widest mr-3">用具側</p>
+                        <div className="flex flex-col gap-3">
                           {['A', 'B', 'C'].map(c => (
                             <CourtButton key={c} label={c} active={selectedCourts.includes(c)} occupied={occupiedCourts.includes(c)} onClick={() => toggleCourt(c)} />
                           ))}
                         </div>
                       </div>
-                      <div className="my-1 border-b border-gray-200 w-2/3 mx-auto"></div>
-                      <div className="space-y-3">
-                        <p className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">入口側</p>
-                        <div className="flex space-x-3 justify-center">
+                      
+                      <div className="w-1 h-48 bg-gray-200 rounded-full mx-2"></div>
+                      
+                      <div className="flex items-center">
+                        <div className="flex flex-col gap-3">
                           {['D', 'E', 'F'].map(c => (
                             <CourtButton key={c} label={c} active={selectedCourts.includes(c)} occupied={occupiedCourts.includes(c)} onClick={() => toggleCourt(c)} />
                           ))}
                         </div>
+                        <p className="text-sm font-black text-gray-400 [writing-mode:vertical-rl] tracking-widest ml-3">入口側</p>
                       </div>
                     </div>
                   </div>
