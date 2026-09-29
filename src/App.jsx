@@ -214,14 +214,14 @@ function TabButton({ icon, label, isActive, onClick }) {
   return (
     <button 
       onClick={onClick} 
-      className={`flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-all duration-200 border-b-4 ${
+      className={`flex-1 flex flex-col items-center justify-center py-2 px-3 sm:py-3 sm:px-4 gap-1 transition-all duration-200 border-b-4 ${
         isActive 
           ? 'border-white text-white bg-blue-700' 
           : 'border-transparent text-blue-200 hover:text-white hover:bg-blue-800'
       }`}
     >
-      {React.cloneElement(icon, { className: `w-5 h-5 ${isActive ? 'animate-bounce' : ''}` })}
-      <span className="text-[10px] font-black">{label}</span>
+      {React.cloneElement(icon, { className: `w-5 h-5 sm:w-6 sm:h-6 ${isActive ? 'animate-bounce' : ''}` })}
+      <span className="text-[10px] sm:text-xs font-black">{label}</span>
     </button>
   );
 }
