@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban, AlertOctagon, Edit2, RotateCcw, Filter, Unlock, BarChart3, Megaphone, MessageSquare, MousePointerClick, UserCircle, Eye, EyeOff } from 'lucide-react';
+import { Calendar, FileText, CheckSquare, Info, XCircle, Plus, Trash2, Users, Building, MapPin, Clock, AlertTriangle, ChevronLeft, ChevronRight, CalendarDays, Loader2, Lock, LogOut, Check, X, ShieldCheck, Download, Printer, KeyRound, Search, RefreshCw, Ban, AlertOctagon, Edit2, RotateCcw, Filter, Unlock, BarChart3, Megaphone, MessageSquare, MousePointerClick, UserCircle } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, writeBatch, setDoc } from 'firebase/firestore';
@@ -214,10 +214,14 @@ function TabButton({ icon, label, isActive, onClick }) {
   return (
     <button 
       onClick={onClick} 
-      className={`flex items-center space-x-1.5 px-4 py-2 rounded-md text-sm font-bold transition-all whitespace-nowrap ${isActive ? 'bg-white text-blue-900 shadow-md' : 'text-blue-100 hover:bg-blue-700 hover:text-white'}`}
+      className={`flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-all duration-200 border-b-4 ${
+        isActive 
+          ? 'border-white text-white bg-blue-700' 
+          : 'border-transparent text-blue-200 hover:text-white hover:bg-blue-800'
+      }`}
     >
-      {React.cloneElement(icon, { className: 'h-4 w-4' })}
-      <span>{label}</span>
+      {React.cloneElement(icon, { className: `w-5 h-5 ${isActive ? 'animate-bounce' : ''}` })}
+      <span className="text-[10px] font-black">{label}</span>
     </button>
   );
 }
@@ -487,9 +491,10 @@ function EditReservationModal({ reservation, groups, allReservations, isAdmin, o
       return new Date(base.getFullYear(), base.getMonth() + addMonths + 1, 0, 23, 59, 59);
     };
 
-    const mccMaxDate = getEndOfMonth(baseMonthDate, 12);
-    const employeeMaxDate = getEndOfMonth(baseMonthDate, 2); // 変更: 2ヶ月先
-    const externalMaxDate = getEndOfMonth(baseMonthDate, 1); // 変更: 1ヶ月先
+    // 保有ルールに基づいた月計算 (mcc:11, employee:2, external:1)
+    const mccMaxDate = getEndOfMonth(baseMonthDate, 11);
+    const employeeMaxDate = getEndOfMonth(baseMonthDate, 2);
+    const externalMaxDate = getEndOfMonth(baseMonthDate, 1);
 
     const targetDateObj = new Date(reservation.date);
     
@@ -579,25 +584,21 @@ function EditReservationModal({ reservation, groups, allReservations, isAdmin, o
                 <span>コート選択 * <span className="text-[10px] font-normal text-red-500 ml-2">※最大3面まで（4面以上は原則禁止）</span></span>
                 <span className="text-[10px] bg-blue-100 px-2 py-0.5 rounded-full">選択中: {courts.length}/6</span>
               </label>
-              <div className="flex justify-center items-center gap-4 py-2">
-                <div className="flex items-center">
-                  <p className="text-xs font-black text-gray-400 [writing-mode:vertical-rl] tracking-widest mr-2">用具側</p>
-                  <div className="flex flex-col gap-3">
-                    {['A', 'B', 'C'].map(c => (
-                      <CourtButton key={c} label={c} active={courts.includes(c)} occupied={occupiedCourts.includes(c)} onClick={() => toggleCourt(c)} />
-                    ))}
-                  </div>
+              <div className="space-y-3">
+                <p className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">用具側</p>
+                <div className="flex space-x-3 justify-center">
+                  {['A', 'B', 'C'].map(c => (
+                    <CourtButton key={c} label={c} active={courts.includes(c)} occupied={occupiedCourts.includes(c)} onClick={() => toggleCourt(c)} />
+                  ))}
                 </div>
-                
-                <div className="w-1 h-48 bg-gray-200 rounded-full mx-2"></div>
-                
-                <div className="flex items-center">
-                  <div className="flex flex-col gap-3">
-                    {['D', 'E', 'F'].map(c => (
-                      <CourtButton key={c} label={c} active={courts.includes(c)} occupied={occupiedCourts.includes(c)} onClick={() => toggleCourt(c)} />
-                    ))}
-                  </div>
-                  <p className="text-xs font-black text-gray-400 [writing-mode:vertical-rl] tracking-widest ml-2">入口側</p>
+              </div>
+              <div className="my-1 border-b border-gray-200 w-2/3 mx-auto"></div>
+              <div className="space-y-3">
+                <p className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">入口側</p>
+                <div className="flex space-x-3 justify-center">
+                  {['D', 'E', 'F'].map(c => (
+                    <CourtButton key={c} label={c} active={courts.includes(c)} occupied={occupiedCourts.includes(c)} onClick={() => toggleCourt(c)} />
+                  ))}
                 </div>
               </div>
             </div>
@@ -651,11 +652,6 @@ export default function App() {
   const [loginAttempts, setLoginAttempts] = useState(0);
   const [lockoutUntil, setLockoutUntil] = useState(null);
   const [remainingLockTime, setRemainingLockTime] = useState(0);
-
-  const [showPortalPass, setShowPortalPass] = useState(false);
-  const [showNewPass, setShowNewPass] = useState(false);
-  const [showNewPassConfirm, setShowNewPassConfirm] = useState(false);
-  const [showAdminPass, setShowAdminPass] = useState(false);
 
   const MAX_ATTEMPTS = 5; 
   const LOCKOUT_DURATION = 5 * 60 * 1000; 
@@ -1007,34 +1003,24 @@ export default function App() {
                </div>
                <div className="space-y-1">
                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block text-left px-4">新しいパスワード (6文字以上)</label>
-                 <div className="relative">
-                   <input 
-                     type={showNewPass ? "text" : "password"} 
-                     required 
-                     autoFocus
-                     value={newPassword}
-                     onChange={e => setNewPassword(e.target.value)}
-                     className="w-full bg-gray-50 border-4 border-transparent focus:border-blue-500 focus:bg-white p-4 rounded-[2rem] text-center text-xl tracking-[0.3em] outline-none transition-all shadow-inner" 
-                   />
-                   <button type="button" onClick={() => setShowNewPass(!showNewPass)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none">
-                     {showNewPass ? <EyeOff className="w-6 h-6" /> : <Eye className="w-6 h-6" />}
-                   </button>
-                 </div>
+                 <input 
+                   type="password" 
+                   required 
+                   autoFocus
+                   value={newPassword}
+                   onChange={e => setNewPassword(e.target.value)}
+                   className="w-full bg-gray-50 border-4 border-transparent focus:border-blue-500 focus:bg-white p-4 rounded-[2rem] text-center text-xl tracking-[0.3em] outline-none transition-all shadow-inner" 
+                 />
                </div>
                <div className="space-y-1">
                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block text-left px-4">新しいパスワード (確認用)</label>
-                 <div className="relative">
-                   <input 
-                     type={showNewPassConfirm ? "text" : "password"} 
-                     required 
-                     value={newPasswordConfirm}
-                     onChange={e => setNewPasswordConfirm(e.target.value)}
-                     className="w-full bg-gray-50 border-4 border-transparent focus:border-blue-500 focus:bg-white p-4 rounded-[2rem] text-center text-xl tracking-[0.3em] outline-none transition-all shadow-inner" 
-                   />
-                   <button type="button" onClick={() => setShowNewPassConfirm(!showNewPassConfirm)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none">
-                     {showNewPassConfirm ? <EyeOff className="w-6 h-6" /> : <Eye className="w-6 h-6" />}
-                   </button>
-                 </div>
+                 <input 
+                   type="password" 
+                   required 
+                   value={newPasswordConfirm}
+                   onChange={e => setNewPasswordConfirm(e.target.value)}
+                   className="w-full bg-gray-50 border-4 border-transparent focus:border-blue-500 focus:bg-white p-4 rounded-[2rem] text-center text-xl tracking-[0.3em] outline-none transition-all shadow-inner" 
+                 />
                </div>
                <div className="pt-2">
                  <button type="submit" className="w-full bg-blue-600 text-white py-5 rounded-[2rem] font-black text-xl hover:bg-blue-700 shadow-xl transition-all active:scale-95">
@@ -1067,18 +1053,13 @@ export default function App() {
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block text-left px-4">パスワード</label>
-                <div className="relative">
-                  <input 
-                    type={showPortalPass ? "text" : "password"} 
-                    required 
-                    value={portalPassInput}
-                    onChange={e => setPortalPassInput(e.target.value)}
-                    className="w-full bg-gray-50 border-4 border-transparent focus:border-blue-500 focus:bg-white p-4 rounded-[2rem] text-center text-xl tracking-[0.3em] outline-none transition-all shadow-inner" 
-                  />
-                  <button type="button" onClick={() => setShowPortalPass(!showPortalPass)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none">
-                    {showPortalPass ? <EyeOff className="w-6 h-6" /> : <Eye className="w-6 h-6" />}
-                  </button>
-                </div>
+                <input 
+                  type="password" 
+                  required 
+                  value={portalPassInput}
+                  onChange={e => setPortalPassInput(e.target.value)}
+                  className="w-full bg-gray-50 border-4 border-transparent focus:border-blue-500 focus:bg-white p-4 rounded-[2rem] text-center text-xl tracking-[0.3em] outline-none transition-all shadow-inner" 
+                />
               </div>
 
               {loginAttempts > 0 && (
@@ -1107,19 +1088,14 @@ export default function App() {
                   className="w-full border-2 border-gray-100 p-3 rounded-xl mb-4 text-sm font-bold focus:border-blue-500 outline-none transition-all shadow-inner" 
                   placeholder="管理者メールアドレス" 
                 />
-                <div className="relative mb-6">
-                  <input 
-                    type={showAdminPass ? "text" : "password"} 
-                    value={passInput} 
-                    onChange={(e) => setPassInput(e.target.value)} 
-                    required 
-                    className="w-full border-2 border-gray-100 p-3 rounded-xl text-center text-lg tracking-widest focus:border-blue-500 outline-none transition-all shadow-inner" 
-                    placeholder="パスワード" 
-                  />
-                  <button type="button" onClick={() => setShowAdminPass(!showAdminPass)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none">
-                    {showAdminPass ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                  </button>
-                </div>
+                <input 
+                  type="password" 
+                  value={passInput} 
+                  onChange={(e) => setPassInput(e.target.value)} 
+                  required 
+                  className="w-full border-2 border-gray-100 p-3 rounded-xl mb-6 text-center text-lg tracking-widest focus:border-blue-500 outline-none transition-all shadow-inner" 
+                  placeholder="パスワード" 
+                />
                 <div className="flex space-x-3">
                   <button type="button" onClick={() => setShowLoginModal(false)} className="flex-1 text-gray-500 py-2 font-bold hover:bg-gray-100 rounded-xl transition-colors">閉じる</button>
                   <button type="submit" className="flex-1 bg-blue-600 text-white py-2 rounded-xl font-bold hover:bg-blue-700 shadow-md transition-all active:scale-95">ログイン</button>
@@ -1599,7 +1575,8 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
       return new Date(base.getFullYear(), base.getMonth() + addMonths + 1, 0, 23, 59, 59);
     };
 
-    const mccMaxDate = getEndOfMonth(baseMonthDate, 12);
+    // 保有ルールに基づいた月計算 (mcc:11, employee:2, external:1)
+    const mccMaxDate = getEndOfMonth(baseMonthDate, 11);
     const employeeMaxDate = getEndOfMonth(baseMonthDate, 2);
     const externalMaxDate = getEndOfMonth(baseMonthDate, 1);
 
@@ -1868,25 +1845,23 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
                       <span>コート選択 * <span className="text-[10px] font-normal text-red-500 ml-2">※最大3面まで（4面以上は原則禁止）</span></span>
                       <span className="text-[10px] bg-blue-100 px-2 py-0.5 rounded-full">選択中: {selectedCourts.length}/6</span>
                     </label>
-                    <div className="flex justify-center items-center gap-6 p-5 bg-gray-100 rounded-[2rem] shadow-inner border-2 border-white">
-                      <div className="flex items-center">
-                        <p className="text-sm font-black text-gray-400 [writing-mode:vertical-rl] tracking-widest mr-3">用具側</p>
-                        <div className="flex flex-col gap-3">
+                    <div className="grid grid-cols-1 gap-2 p-5 bg-gray-100 rounded-[2rem] shadow-inner border-2 border-white">
+                      <div className="space-y-3">
+                        <p className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">用具側</p>
+                        <div className="flex space-x-3 justify-center">
                           {['A', 'B', 'C'].map(c => (
                             <CourtButton key={c} label={c} active={selectedCourts.includes(c)} occupied={occupiedCourts.includes(c)} onClick={() => toggleCourt(c)} />
                           ))}
                         </div>
                       </div>
-                      
-                      <div className="w-1 h-48 bg-gray-200 rounded-full mx-2"></div>
-                      
-                      <div className="flex items-center">
-                        <div className="flex flex-col gap-3">
+                      <div className="my-1 border-b border-gray-200 w-2/3 mx-auto"></div>
+                      <div className="space-y-3">
+                        <p className="text-[10px] font-bold text-center text-gray-400 uppercase tracking-widest">入口側</p>
+                        <div className="flex space-x-3 justify-center">
                           {['D', 'E', 'F'].map(c => (
                             <CourtButton key={c} label={c} active={selectedCourts.includes(c)} occupied={occupiedCourts.includes(c)} onClick={() => toggleCourt(c)} />
                           ))}
                         </div>
-                        <p className="text-sm font-black text-gray-400 [writing-mode:vertical-rl] tracking-widest ml-3">入口側</p>
                       </div>
                     </div>
                   </div>
