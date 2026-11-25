@@ -75,12 +75,12 @@ const END_TIMES = [
   "17:00", "17:30", "18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00"
 ];
 const RESOURCES = [
-  { id: 'A', name: 'コートA (入口側)', type: '体育館' },
-  { id: 'B', name: 'コートB (入口側)', type: '体育館' },
-  { id: 'C', name: 'コートC (入口側)', type: '体育館' },
-  { id: 'D', name: 'コートD (用具側)', type: '体育館' },
-  { id: 'E', name: 'コートE (用具側)', type: '体育館' },
-  { id: 'F', name: 'コートF (用具側)', type: '体育館' },
+  { id: 'A', name: 'コートA (用具側)', type: '体育館' },
+  { id: 'B', name: 'コートB (用具側)', type: '体育館' },
+  { id: 'C', name: 'コートC (用具側)', type: '体育館' },
+  { id: 'D', name: 'コートD (入口側)', type: '体育館' },
+  { id: 'E', name: 'コートE (入口側)', type: '体育館' },
+  { id: 'F', name: 'コートF (入口側)', type: '体育館' },
   { id: '多目的室', name: '多目的室', type: '多目的室' },
 ];
 
@@ -354,9 +354,10 @@ function EditReservationModal({ reservation, groups, allReservations, isAdmin, o
     const getEndOfMonth = (base, addMonths) => new Date(base.getFullYear(), base.getMonth() + addMonths + 1, 0, 23, 59, 59);
     const targetDateObj = new Date(String(reservation.date));
     
-    if (groupData.type === 'mcc' && targetDateObj > getEndOfMonth(baseMonthDate, 11)) { overrideMsgs.push(`・会社の部活の期間外です。`); requiresAdminOverride = true; }
-    else if (groupData.type === 'employee' && targetDateObj > getEndOfMonth(baseMonthDate, 2)) { overrideMsgs.push(`・従業員の期間外です。`); requiresAdminOverride = true; }
-    else if (groupData.type === 'external' && targetDateObj > getEndOfMonth(baseMonthDate, 1)) { overrideMsgs.push(`・一般・団体の期間外です。`); requiresAdminOverride = true; }
+    // 保有期間ルール（部活：1年=11ヶ月先、社内：6ヶ月=5ヶ月先、社外：3ヶ月=2ヶ月先）
+    if (groupData.type === 'mcc' && targetDateObj > getEndOfMonth(baseMonthDate, 11)) { overrideMsgs.push(`・会社の部活の予約可能期間（1年分保有）を超えています。`); requiresAdminOverride = true; }
+    else if (groupData.type === 'employee' && targetDateObj > getEndOfMonth(baseMonthDate, 5)) { overrideMsgs.push(`・従業員の予約可能期間（6ヶ月分保有）を超えています。`); requiresAdminOverride = true; }
+    else if (groupData.type === 'external' && targetDateObj > getEndOfMonth(baseMonthDate, 2)) { overrideMsgs.push(`・一般・団体の予約可能期間（3ヶ月分保有）を超えています。`); requiresAdminOverride = true; }
 
     if (!isExempt && currentTotalMinutes + newMinutes > limitMinutes) {
       overrideMsgs.push(`・月間予約上限（${limitMinutes/60}時間）を超過します。`);
@@ -408,7 +409,7 @@ function EditReservationModal({ reservation, groups, allReservations, isAdmin, o
                 <span className="text-[10px] bg-blue-100 px-2 py-0.5 rounded-full">選択中: {courts.length}/6</span>
               </label>
               <div className="flex justify-center items-center gap-4 sm:gap-8 py-4 bg-gray-200 rounded-[2rem] shadow-inner border-2 border-white">
-                <div className="text-[12px] font-black text-gray-400 tracking-widest" style={{ writingMode: 'vertical-rl' }}>入口側</div>
+                <div className="text-[12px] font-black text-gray-400 tracking-widest" style={{ writingMode: 'vertical-rl' }}>用具側</div>
                 <div className="flex flex-col gap-4">
                   <CourtButton label="A" active={courts.includes('A')} occupied={occupiedCourts.includes('A')} onClick={() => toggleCourt('A')} />
                   <CourtButton label="B" active={courts.includes('B')} occupied={occupiedCourts.includes('B')} onClick={() => toggleCourt('B')} />
@@ -419,7 +420,7 @@ function EditReservationModal({ reservation, groups, allReservations, isAdmin, o
                   <CourtButton label="E" active={courts.includes('E')} occupied={occupiedCourts.includes('E')} onClick={() => toggleCourt('E')} />
                   <CourtButton label="F" active={courts.includes('F')} occupied={occupiedCourts.includes('F')} onClick={() => toggleCourt('F')} />
                 </div>
-                <div className="text-[12px] font-black text-gray-400 tracking-widest" style={{ writingMode: 'vertical-rl' }}>用具側</div>
+                <div className="text-[12px] font-black text-gray-400 tracking-widest" style={{ writingMode: 'vertical-rl' }}>入口側</div>
               </div>
             </div>
           )}
@@ -921,8 +922,8 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
 
   const maxRecurringCount = useMemo(() => {
     if (userType === 'mcc' || userType === 'soumu') return 53;
-    if (userType === 'employee') return 15;
-    return 10; 
+    if (userType === 'employee') return 27;
+    return 15; 
   }, [userType]);
 
   const targetDates = useMemo(() => {
@@ -1013,11 +1014,12 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
     if (now.getDate() === 1 && now.getHours() < 12) baseMonthDate.setMonth(baseMonthDate.getMonth() - 1);
     const getEndOfMonth = (base, addMonths) => new Date(base.getFullYear(), base.getMonth() + addMonths + 1, 0, 23, 59, 59);
     
+    // 保有期間ルール（部活：1年=11ヶ月先、社内：6ヶ月=5ヶ月先、社外：3ヶ月=2ヶ月先）
     for (const d of partitionedDates.valid) {
       const targetDateObj = new Date(String(d));
-      if (userType === 'mcc' && targetDateObj > getEndOfMonth(baseMonthDate, 11)) { adminOverrideMessages.push(`・期間外`); requiresAdminOverride = true; break; }
-      if (userType === 'employee' && targetDateObj > getEndOfMonth(baseMonthDate, 2)) { adminOverrideMessages.push(`・従業員の期間外`); requiresAdminOverride = true; break; }
-      if (userType === 'external' && targetDateObj > getEndOfMonth(baseMonthDate, 1)) { adminOverrideMessages.push(`・一般の期間外`); requiresAdminOverride = true; break; }
+      if (userType === 'mcc' && targetDateObj > getEndOfMonth(baseMonthDate, 11)) { adminOverrideMessages.push(`・会社の部活の予約可能期間（1年分保有）を超えています。`); requiresAdminOverride = true; break; }
+      if (userType === 'employee' && targetDateObj > getEndOfMonth(baseMonthDate, 5)) { adminOverrideMessages.push(`・従業員の予約可能期間（6ヶ月分保有）を超えています。`); requiresAdminOverride = true; break; }
+      if (userType === 'external' && targetDateObj > getEndOfMonth(baseMonthDate, 2)) { adminOverrideMessages.push(`・一般・団体の予約可能期間（3ヶ月分保有）を超えています。`); requiresAdminOverride = true; break; }
     }
 
     const newBookingMinutes = calculateDurationMinutes(formData.startTime, formData.endTime);
@@ -1175,7 +1177,7 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
                       <span className="text-[10px] bg-blue-100 px-2 py-0.5 rounded-full">選択中: {selectedCourts.length}/6</span>
                     </label>
                     <div className="flex justify-center items-center gap-4 sm:gap-8 py-4 bg-gray-100 rounded-[2rem] shadow-inner border-2 border-white">
-                      <div className="text-[12px] font-black text-gray-400 tracking-widest" style={{ writingMode: 'vertical-rl' }}>入口側</div>
+                      <div className="text-[12px] font-black text-gray-400 tracking-widest" style={{ writingMode: 'vertical-rl' }}>用具側</div>
                       <div className="flex flex-col gap-4">
                         <CourtButton label="A" active={selectedCourts.includes('A')} occupied={occupiedCourts.includes('A')} onClick={() => toggleCourt('A')} />
                         <CourtButton label="B" active={selectedCourts.includes('B')} occupied={occupiedCourts.includes('B')} onClick={() => toggleCourt('B')} />
@@ -1186,7 +1188,7 @@ function ReservationForm({ initialDate, reservations, closedDays, groups, user, 
                         <CourtButton label="E" active={selectedCourts.includes('E')} occupied={occupiedCourts.includes('E')} onClick={() => toggleCourt('E')} />
                         <CourtButton label="F" active={selectedCourts.includes('F')} occupied={occupiedCourts.includes('F')} onClick={() => toggleCourt('F')} />
                       </div>
-                      <div className="text-[12px] font-black text-gray-400 tracking-widest" style={{ writingMode: 'vertical-rl' }}>用具側</div>
+                      <div className="text-[12px] font-black text-gray-400 tracking-widest" style={{ writingMode: 'vertical-rl' }}>入口側</div>
                     </div>
                   </div>
                 )}
@@ -1836,21 +1838,30 @@ function RulesView() {
               
               <div className="space-y-3">
                 <div className="bg-white p-4 rounded-2xl border-2 border-purple-100 shadow-sm">
-                  <div className="flex items-center gap-2">
-                    <span className="bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded font-black whitespace-nowrap">会社の部活</span>
-                    <span className="text-sm font-bold text-gray-800">1年先の1ヶ月分を開放</span>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded font-black whitespace-nowrap">会社の部活</span>
+                      <span className="text-sm font-bold text-gray-800">1年分保有（当月〜11ヶ月先まで）</span>
+                    </div>
+                    <span className="text-xs text-gray-500 font-bold bg-gray-50 px-2 py-1 rounded border border-gray-100">例: 10/1 → 翌年9月分開放</span>
                   </div>
                 </div>
                 <div className="bg-white p-4 rounded-2xl border-2 border-blue-100 shadow-sm">
-                  <div className="flex items-center gap-2">
-                    <span className="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded font-black whitespace-nowrap">従業員</span>
-                    <span className="text-sm font-bold text-gray-800">3ヶ月先の1ヶ月分を開放</span>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded font-black whitespace-nowrap">従業員</span>
+                      <span className="text-sm font-bold text-gray-800">6ヶ月分保有（当月〜5ヶ月先まで）</span>
+                    </div>
+                    <span className="text-xs text-gray-500 font-bold bg-gray-50 px-2 py-1 rounded border border-gray-100">例: 10/1 → 翌年3月分開放</span>
                   </div>
                 </div>
                 <div className="bg-white p-4 rounded-2xl border-2 border-green-100 shadow-sm">
-                  <div className="flex items-center gap-2">
-                    <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded font-black whitespace-nowrap">一般・団体</span>
-                    <span className="text-sm font-bold text-gray-800">2ヶ月先の1ヶ月分を開放</span>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded font-black whitespace-nowrap">一般・団体</span>
+                      <span className="text-sm font-bold text-gray-800">3ヶ月分保有（当月〜2ヶ月先まで）</span>
+                    </div>
+                    <span className="text-xs text-gray-500 font-bold bg-gray-50 px-2 py-1 rounded border border-gray-100">例: 10/1 → 12月分開放</span>
                   </div>
                 </div>
               </div>
